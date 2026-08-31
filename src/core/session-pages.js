@@ -40,11 +40,31 @@ export function sessionPageFor(domain) {
 /**
  * How this site's other sessions can actually be ended.
  *
+ * `endedHere` changes the message rather than the links. Using the site's own sign-out
+ * ends this browser's session properly, so the only thing left is other devices - a
+ * materially better position than an abandoned session that is still listed as live, and
+ * the user should be able to tell the two apart.
+ *
  * @param {string} domain
+ * @param {boolean} [endedHere] The site's own logout was used successfully.
  * @returns {RevokeGuidance}
  */
-export function revokeGuidanceFor(domain) {
+export function revokeGuidanceFor(domain, endedHere = false) {
   const page = SESSION_PAGES[domain];
+
+  if (endedHere) {
+    return page
+      ? {
+          kind: 'page',
+          url: page.url,
+          label: page.label,
+          message: 'This browser is signed out properly, not just cleared. Sessions on your other devices are untouched — end those here if you want to.'
+        }
+      : {
+          kind: 'passwordOnly',
+          message: 'This browser is signed out properly, not just cleared. Sessions on your other devices are untouched; changing your password is the usual way to end those.'
+        };
+  }
 
   if (!page) {
     return {

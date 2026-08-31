@@ -229,19 +229,42 @@ test('recipe lookup is by registrable domain', () => {
   assert.equal(findRecipe('unknown-site.example'), null);
 });
 
-test('only documented logout URLs ship as recipes', () => {
-  // Every click-based recipe was removed after the first one anybody checked turned out
-  // to be clicking for a control that does not exist. A wrong recipe is worse than none:
-  // it fails silently AND pre-empts the generic fallback that would have found the site's
-  // real sign-out link.
+test('recipes only ever drive the site own sign-out', () => {
+  // The distinction that cost twelve recipes: submitting a site's sign-out form is a
+  // concrete, checkable action, while clicking at a "revoke all devices" button nobody
+  // has seen is a guess that fails silently. Clicking is allowed - but only on a page
+  // reached through a logout URL, where the thing being clicked is the sign-out itself.
   for (const recipe of RECIPES) {
-    const ops = recipe.steps.map((s) => s.op);
-    assert.ok(
-      !ops.includes('click') && !ops.includes('clickText'),
-      `${recipe.domain} clicks at a control nobody has verified`
+    assert.equal(recipe.capability, 'local', `${recipe.domain} claims more than it can show`);
+    assert.equal(recipe.verified, undefined, `${recipe.domain} claims verification it does not have`);
+
+    const clicks = recipe.steps.filter((s) => s.op === 'click' || s.op === 'clickText');
+    if (clicks.length === 0) continue;
+
+    const firstUrl = recipe.steps.find((s) => s.op === 'navigate')?.url ?? '';
+    assert.match(
+      firstUrl,
+      /log-?out|sign-?out/i,
+      `${recipe.domain} clicks on a page that is not a logout page`
     );
-    assert.equal(recipe.capability, 'local', `${recipe.domain} claims more than a logout URL can deliver`);
   }
+});
+
+test('the generic fallback tries the conventional logout path first', () => {
+  // Deleting cookies abandons a session; using the site's own logout ends it. The /logout
+  // convention is the cheapest way to reach a real sign-out form, and a form submit is
+  // what carries the CSRF token the endpoint requires.
+  const path = heuristicRecipe('https://example.com', 'path');
+  assert.equal(path.steps[0].url, 'https://example.com/logout');
+  assert.ok(
+    path.steps.some((s) => s.op === 'clickText' && s.selector.includes('submit')),
+    'a form submit is what actually signs you out'
+  );
+  assert.ok(isValidRecipe(path));
+
+  const home = heuristicRecipe('https://example.com', 'home');
+  assert.equal(home.steps[0].url, 'https://example.com');
+  assert.ok(isValidRecipe(home));
 });
 
 test('sites without automation still point the user at their session list', () => {
@@ -260,6 +283,19 @@ test('a site with no bulk revoke says so, and names the alternative', () => {
   assert.match(github.message, /one at a time/);
   assert.match(github.message, /password/);
   assert.equal(github.url, 'https://github.com/settings/sessions');
+});
+
+test('a session ended through the site reads differently from one abandoned', () => {
+  // Clearing cookies leaves a live token on the server that the user can no longer see.
+  // Using the site's own sign-out ends it. Those are materially different outcomes and
+  // the wording has to separate them.
+  const ended = revokeGuidanceFor('github.com', true);
+  assert.match(ended.message, /signed out properly, not just cleared/);
+  assert.match(ended.message, /other devices/);
+
+  const abandoned = revokeGuidanceFor('github.com', false);
+  assert.notEqual(ended.message, abandoned.message);
+  assert.match(abandoned.message, /one at a time/);
 });
 
 test('a site with a known page but unchecked capability is not overclaimed', () => {

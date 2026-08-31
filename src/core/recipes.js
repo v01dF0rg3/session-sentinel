@@ -67,6 +67,17 @@ const DEFAULT_WAIT = 8000;
 /** @type {Recipe[]} */
 export const RECIPES = [
   {
+    domain: 'github.com',
+    capability: 'local',
+    steps: [
+      { op: 'navigate', url: 'https://github.com/logout' },
+      { op: 'waitFor', selector: 'form[action*="logout"]', timeoutMs: DEFAULT_WAIT },
+      { op: 'clickText', selector: 'button[type="submit"], input[type="submit"]', text: 'sign out|log out' },
+      { op: 'sleep', ms: 2000 }
+    ],
+    note: 'Uses GitHub own sign-out form, so the session ends server-side instead of being abandoned.'
+  },
+  {
     domain: 'google.com',
     capability: 'local',
     steps: [
@@ -104,13 +115,45 @@ export function findRecipe(domain) {
 }
 
 /**
- * Tier 1 fallback: a generic recipe that hunts for the site's own logout control.
- * Deliberately conservative - it only ever clicks something that reads as a logout,
- * and it cannot claim more than 'local'.
+ * Tier 1 fallback: find and use the site's own logout, without a recipe.
+ *
+ * This matters more than it looks. Deleting cookies does not end a session - it abandons
+ * it, leaving a live token on the server that the user can no longer see or revoke. Five
+ * clears of one GitHub account produced five abandoned-but-active sessions. Reaching the
+ * site's real sign-out is the difference between ending a session and littering.
+ *
+ * Two modes, tried in order by attemptServerLogout:
+ *
+ *   'path'  Go straight to the conventional /logout URL. Most frameworks put a sign-out
+ *           form there, and a form submit carries the CSRF token the endpoint demands.
+ *   'home'  Load the site and click whatever reads as a logout control. Works where the
+ *           link sits in plain sight; misses menus, which is honest rather than fatal.
+ *
+ * Deliberately conservative: it only ever clicks something that reads as a logout, and
+ * cannot claim more than 'local'.
+ *
  * @param {string} origin
+ * @param {'path' | 'home'} mode
  * @returns {Recipe}
  */
-export function heuristicRecipe(origin) {
+export function heuristicRecipe(origin, mode = 'home') {
+  const CONFIRM = 'sign out|log out|logout|log off|sign me out|yes|confirm';
+
+  if (mode === 'path') {
+    return {
+      domain: origin,
+      capability: 'local',
+      steps: [
+        { op: 'navigate', url: `${origin}/logout` },
+        // Submit buttons first: a form submit is what carries the CSRF token.
+        { op: 'clickText', selector: 'button[type="submit"], input[type="submit"]', text: CONFIRM, optional: true },
+        { op: 'clickText', selector: 'button, a[href*="logout"], [role="button"]', text: CONFIRM, optional: true },
+        { op: 'sleep', ms: 1800 }
+      ],
+      note: 'Signed out through the site own logout endpoint, so the session ended rather than being abandoned.'
+    };
+  }
+
   return {
     domain: origin,
     capability: 'local',
@@ -124,7 +167,7 @@ export function heuristicRecipe(origin) {
       },
       { op: 'sleep', ms: 2000 }
     ],
-    note: 'Generic logout attempt - no recipe exists for this site yet.'
+    note: 'Signed out using a logout control found on the page.'
   };
 }
 

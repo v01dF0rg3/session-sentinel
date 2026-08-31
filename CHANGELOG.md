@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.14.0 — 31 August 2026
+
+### End sessions instead of abandoning them
+
+Deleting a site's cookies does not end its session — it orphans it, leaving a live token on
+the server that the user can no longer see or revoke. Five clears of one GitHub account
+produced five abandoned-but-active sessions. Reaching the site's own sign-out is the
+difference between ending a session and littering.
+
+- **GitHub recipe, rebuilt around the sign-out form** rather than the revoke-all button
+  that does not exist. Navigates to `/logout`, waits for the form, submits it. A form
+  submit is what carries the CSRF token the endpoint requires; a fetch cannot.
+
+- **The generic fallback now tries `/logout` first**, then falls back to scanning the
+  homepage. Most frameworks put a sign-out form at that path, and it is far cheaper than
+  hunting a link that may be buried in a menu.
+
+- **Results distinguish an ended session from an abandoned one.** *"This browser is signed
+  out properly, not just cleared"* is a different situation from *"cleared here, but the
+  session was not ended on the site, so it stays listed as active there"*, and the user
+  should be able to tell which they got.
+
+The GitHub recipe is verifiable in a way the deleted ones never were: sign out through the
+extension, reload the sessions page, and see whether the count grows. It carries no
+`verified` date until someone does exactly that.
+
+### Tests
+
+67.
+
 ## 0.13.2 — 30 August 2026
 
 ### Changed

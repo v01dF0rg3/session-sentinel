@@ -160,7 +160,9 @@ export async function runLogout(trigger, domains = null) {
       // it. GitHub will happily list five abandoned-but-active sessions from five clears.
       // Say what would actually finish the job, which differs by site: revoke from a list,
       // or change the password because the site offers nothing else.
-      if (attempt.result !== 'revoked') result.revokeGuidance = revokeGuidanceFor(target.domain);
+      if (attempt.result !== 'revoked') {
+        result.revokeGuidance = revokeGuidanceFor(target.domain, attempt.result === 'loggedOut');
+      }
 
       // A partial wipe is not a clean one. Say which types survived rather than
       // letting "cleared" imply everything went.
@@ -177,6 +179,12 @@ export async function runLogout(trigger, domains = null) {
 
       // An already-open page keeps its session in memory and will look signed in until it
       // is reloaded. Users read that as "the logout did not work", so it has to be said.
+      // An abandoned session is a live token the user can no longer see. Saying which
+      // happened is the difference between "done" and "done, mostly".
+      const orphanNote =
+        attempt.result === 'none' && target.serverLogout
+          ? ' — cleared here, but the session was not ended on the site, so it stays listed as active there'
+          : '';
       const openTabsNote =
         affected.length && settings.tabHandling !== 'reload'
           ? ` — ${affected.length} tab${affected.length === 1 ? '' : 's'} still open on this site; reload to see the change`
@@ -195,7 +203,7 @@ export async function runLogout(trigger, domains = null) {
         result.outcome = 'cleared';
         result.detail =
           (target.serverLogout ? attempt.detail : `local data cleared (${target.depth})`) +
-          sharedNote + partial + keptNote + openTabsNote;
+          sharedNote + orphanNote + partial + keptNote + openTabsNote;
       }
 
       sites.push(result);

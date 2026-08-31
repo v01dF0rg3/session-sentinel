@@ -249,12 +249,19 @@ export async function attemptServerLogout(domain, windowId, timeoutMs) {
     }
   }
 
-  if (remaining() > 4000 && !recipe) {
-    const attempt = await runRecipe(heuristicRecipe(`https://${domain}`), windowId, remaining());
-    if (attempt.result !== 'none') {
-      return { result: 'loggedOut', detail: 'generic logout control clicked' };
+  // Tier 1. Two shapes, cheapest and most likely first. Worth trying hard: without it the
+  // session is merely abandoned, and an abandoned session is a live token the user can no
+  // longer see.
+  if (!recipe) {
+    for (const mode of /** @type {const} */ (['path', 'home'])) {
+      if (remaining() < 5000) break;
+      const attempt = await runRecipe(heuristicRecipe(`https://${domain}`, mode), windowId, remaining());
+      if (attempt.result !== 'none') return attempt;
     }
   }
 
-  return { result: 'none', detail: 'no server-side logout available' };
+  return {
+    result: 'none',
+    detail: 'could not find a sign-out on this site, so its session was cleared here but not ended'
+  };
 }
