@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fixture: sessions page</title>
+    <style>
+      body { font: 14px system-ui, sans-serif; padding: 24px; max-width: 640px; }
+      .hidden-control { display: none; }
+      .offscreen { position: absolute; width: 0; height: 0; overflow: hidden; }
+      button { font: inherit; padding: 6px 10px; margin: 4px 0; }
+      .wrapper { border: 1px solid #ccc; padding: 12px; margin: 12px 0; }
+      #late { display: none; }
+    </style>
+  </head>
+  <body>
+    <h1>Web sessions</h1>
+
+    <!-- Decoy: matches the text but is invisible. The runner must skip it. -->
+    <button class="hidden-control" id="decoy-hidden">Revoke all sessions</button>
+    <button class="offscreen" id="decoy-offscreen">Revoke all sessions</button>
+
+    <!-- Decoy: a huge container whose textContent contains the phrase. Clicking a
+         page-sized wrapper does nothing useful, so the 400-char guard must reject it. -->
+    <div role="button" id="decoy-huge" class="wrapper">
+      This account has active sessions on several devices. If you no longer recognise one
+      of them you should revoke all sessions immediately and then change your password.
+      Revoking sessions signs you out of every browser and mobile app that currently holds
+      a token for this account, including the one you are using right now, so you will need
+      to sign in again afterwards. Revoke all sessions is the safest option when in doubt.
+    </div>
+
+    <!-- Decoy: similar but wrong action. -->
+    <button id="decoy-wrong">Revoke this session</button>
+
+    <!-- The real target. -->
+    <form action="/settings/sessions/revoke_all" method="post" id="revoke-form">
+      <button type="submit" id="real-target">Revoke all sessions</button>
+    </form>
+
+    <!-- aria-label only, no text content. -->
+    <button id="aria-target" aria-label="Sign out of all devices"><svg width="12" height="12"></svg></button>
+
+    <!-- Appears after a delay, to exercise waitFor. -->
+    <div id="late">Confirmation panel</div>
+
+    <p id="log"></p>
+
+    <script>
+      const log = (msg) => { document.getElementById('log').textContent += msg + ' '; };
+
+      // Submitting would navigate away and end the test, so record and remove instead.
+      // Removal is what assertAbsent should then observe.
+      document.getElementById('revoke-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        window.__clicked = 'real-target';
+        log('revoked;');
+        document.getElementById('revoke-form').remove();
+      });
+
+      for (const id of ['decoy-hidden', 'decoy-offscreen', 'decoy-huge', 'decoy-wrong', 'aria-target']) {
+        document.getElementById(id).addEventListener('click', () => {
+          window.__clicked = id;
+          log(id + ';');
+        });
+      }
+
+      setTimeout(() => { document.getElementById('late').style.display = 'block'; }, 1200);
+    </script>
+  </body>
+</html>

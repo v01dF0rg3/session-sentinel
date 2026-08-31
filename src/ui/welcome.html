@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Session Sentinel — setup</title>
+    <link rel="stylesheet" href="ui.css" />
+  </head>
+  <body class="options welcome">
+    <header class="welcome-head">
+      <svg class="mark mark-lg" viewBox="0 0 16 16" width="44" height="44" aria-hidden="true" focusable="false">
+          <path d="M5 7.2V5a3 3 0 0 1 6 0v2.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
+          <rect x="2.7" y="7.2" width="10.6" height="7" rx="1.6" fill="currentColor" />
+          <circle cx="8" cy="10.2" r="1.15" fill="var(--bg)" />
+          <path d="M7.4 10.2h1.2l.35 2.1h-1.9z" fill="var(--bg)" />
+        </svg>
+      <div>
+        <h1 style="font-size:22px">Session Sentinel is installed</h1>
+        <p class="muted">Nothing has been cleared yet, and nothing will be until you finish this page.</p>
+      </div>
+    </header>
+
+    <section class="card">
+      <h2 style="margin-bottom:10px">What it will do</h2>
+      <ul class="plain">
+        <li><strong>When you close the browser</strong>, sessions on your high-risk sites are cleared. If Chrome exits before that finishes, it completes on next launch, before your tabs reload.</li>
+        <li><strong>After 30 minutes idle, or when your screen locks</strong>, the same thing happens.</li>
+        <li>Where a site offers a real <em>sign out of all devices</em> control, it is used, so the session dies on your other devices too. Where it does not, only local data is cleared — and it says so rather than claiming more.</li>
+      </ul>
+      <p class="muted" style="margin-top:10px">
+        Lower-risk sites are left alone by default. You can change any of this in settings.
+      </p>
+    </section>
+
+    <section class="card">
+      <h2 style="margin-bottom:4px">Sites this will affect</h2>
+      <p class="muted" style="margin-bottom:12px">
+        Detected from your cookies, on this machine only. Untick anything you want to stay
+        signed in to — a music player or a home dashboard, for example.
+      </p>
+      <ul id="affected" class="site-list tall"></ul>
+      <p class="muted" id="affected-empty" hidden>
+        No signed-in sites detected yet. Session Sentinel will pick them up as you browse.
+      </p>
+    </section>
+
+    <section class="card">
+      <h2 style="margin-bottom:10px">Two honest limits</h2>
+      <p style="margin-bottom:8px">
+        <strong>Deleting cookies protects this computer.</strong> It does not invalidate a
+        token that was already stolen and is being used elsewhere. Only the sites with a real
+        revoke control can do that, and results say which is which.
+      </p>
+      <p>
+        <strong>You can be signed out at an awkward moment.</strong> That is the feature
+        working. Use <em>Never clear this site</em> on anything where that would hurt.
+      </p>
+    </section>
+
+    <div class="welcome-actions">
+      <button id="finish" class="primary" type="button">Turn on automatic protection</button>
+      <button id="manual-only" class="ghost" type="button" title="The extension stays installed and you can log out from the popup whenever you like, but nothing happens on a schedule.">
+        Manual only for now
+      </button>
+    </div>
+    <p class="muted" id="finish-note" style="margin-top:10px"></p>
+
+    <script type="module" src="welcome.js"></script>
+  </body>
+</html>

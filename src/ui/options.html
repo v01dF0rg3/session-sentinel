@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Session Sentinel settings</title>
+    <link rel="stylesheet" href="ui.css" />
+  </head>
+  <body class="options">
+    <h1 style="font-size:20px;margin-bottom:6px">Session Sentinel</h1>
+    <p class="muted" style="margin-bottom:20px">
+      Everything below is stored on this computer. The extension has no account, sends no
+      telemetry, and never transmits your browsing history anywhere.
+    </p>
+
+    <div class="note">
+      <strong>What "log out" can and cannot do.</strong> Deleting cookies protects you on
+      this machine. It does not invalidate a token that was already stolen. Where a site
+      offers a real "sign out of all devices" control, Session Sentinel drives it in a
+      hidden tab and reports <em>revoked</em>; otherwise it reports
+      <em>cleared locally</em> and means it.
+    </div>
+
+    <section class="card">
+      <h2 style="margin-bottom:8px">Automatic triggers</h2>
+
+      <div class="row">
+        <div class="row-text">
+          <h3>When the browser closes</h3>
+          <p>
+            Chrome gives extensions no reliable shutdown hook, so this runs on close if it
+            can and otherwise completes on next launch, before your restored tabs load.
+            Sessions are gone by the time the browser is usable again.
+          </p>
+        </div>
+        <div class="row-control">
+          <select id="close-tier"></select>
+          <input type="checkbox" id="close-enabled" aria-label="Log out when the browser closes" />
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="row-text">
+          <h3>After inactivity</h3>
+          <p>Applies to sites at or above the selected risk level.</p>
+        </div>
+        <div class="row-control">
+          <input type="number" id="idle-minutes" min="1" max="480" />
+          <span class="muted">min</span>
+          <select id="idle-tier"></select>
+          <input type="checkbox" id="idle-enabled" aria-label="Log out after inactivity" />
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="row-text">
+          <h3>When the screen locks or sleeps</h3>
+          <p>A deliberate "I am walking away" signal, so it is treated more aggressively.</p>
+        </div>
+        <div class="row-control">
+          <select id="lock-tier"></select>
+          <input type="checkbox" id="lock-enabled" aria-label="Log out when the screen locks" />
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 style="margin-bottom:8px">How hard to try</h2>
+
+      <div class="row">
+        <div class="row-text">
+          <h3>Contact sites to invalidate sessions</h3>
+          <p>
+            Opens a hidden background window to use the site's own sign-out, which is the
+            only way to kill a session server-side. Costs a few seconds per site.
+          </p>
+        </div>
+        <div class="row-control">
+          <select id="server-tier"></select>
+          <input type="checkbox" id="server-enabled" aria-label="Contact sites to invalidate sessions" />
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="row-text">
+          <h3>Per-site data removal</h3>
+          <p>
+            Deep also clears IndexedDB and cache storage. Some sites keep drafts and offline
+            documents there, so deep is reserved for the tiers where that is unlikely.
+          </p>
+        </div>
+        <div class="row-control">
+          <table style="width:auto">
+            <tbody id="depth-rows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="row-text">
+          <h3>Your open tabs</h3>
+          <p>
+            A page you already have open keeps its session in memory, so it carries on
+            looking signed in until it is reloaded — even though the logout worked.
+            Reloading it makes the result visible immediately. Turn this off if you would
+            rather refresh pages yourself; note that reloading discards anything you had
+            typed into a form on that site.
+          </p>
+        </div>
+        <div class="row-control">
+          <select id="tab-handling">
+            <option value="none">leave alone</option>
+            <option value="reload">reload after clearing</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="row-text">
+          <h3>Show a notification after each run</h3>
+          <p>Reports what was revoked, what was only cleared, and what failed.</p>
+        </div>
+        <div class="row-control">
+          <input type="checkbox" id="notifications" aria-label="Show notifications" />
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 style="margin-bottom:8px">Logout recipes</h2>
+
+      <div class="row">
+        <div class="row-text">
+          <h3>Keep site recipes up to date</h3>
+          <p>
+            Sites move their "sign out everywhere" buttons, and a stale recipe quietly
+            downgrades a site from <em>revoked</em> to <em>cleared locally</em>. Updates are
+            signed, and the whole list is downloaded at once — never queried per site — so
+            the server cannot learn which sites you use. If an update fails or cannot be
+            verified, the recipes built into the extension stay in force.
+          </p>
+          <p id="recipe-status" style="margin-top:6px"></p>
+        </div>
+        <div class="row-control">
+          <button id="recipe-check" class="ghost small" type="button">Check now</button>
+          <input type="checkbox" id="recipe-enabled" aria-label="Keep site recipes up to date" />
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 style="margin-bottom:8px">Sites</h2>
+      <p class="muted" style="margin-bottom:10px">
+        Set a site to <strong>never clear</strong> to stay signed in there — it is skipped by
+        every automatic trigger and by "Log out of all sessions". You can still clear it by
+        hand from the popup. <strong>Always protect</strong> does the opposite: the site is
+        treated as critical no matter how it was classified.
+      </p>
+      <div class="sites-toolbar">
+        <input
+          id="site-search"
+          class="filter"
+          type="search"
+          placeholder="Filter sites…"
+          aria-label="Filter the list of sites"
+          autocomplete="off"
+        />
+        <label class="keep" id="only-configured-label" title="Show only sites you have set to never clear or always protect">
+          <input type="checkbox" id="only-configured" />
+          <span>Only configured</span>
+        </label>
+        <span class="count" id="site-search-count"></span>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Site</th><th>Risk</th><th>Handling</th><th></th></tr>
+          </thead>
+          <tbody id="site-rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 style="margin-bottom:8px">Check it works</h2>
+      <div class="row">
+        <div class="row-text">
+          <h3>Run diagnostics</h3>
+          <p>
+            Exercises the browser APIs this extension depends on and reports what actually
+            works on your machine. Safe: it counts your cookies without reading or deleting
+            them, and only clears data for a reserved test domain that cannot exist.
+          </p>
+        </div>
+        <div class="row-control">
+          <button id="open-diagnostics" class="ghost small" type="button">Open</button>
+        </div>
+      </div>
+    </section>
+
+    <p class="muted" id="saved-note"></p>
+
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

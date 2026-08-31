@@ -1,0 +1,235 @@
+# Session Sentinel
+
+A Manifest V3 Chrome extension that ends your web sessions — on demand, after inactivity,
+when the screen locks, or when the browser closes.
+
+It works out of the box. Install it, accept the permission prompt, and it protects your
+high-risk accounts with no configuration.
+
+## Loading it
+
+1. Open `chrome://extensions`
+2. Turn on **Developer mode**
+3. **Load unpacked** → select this folder
+
+No build step. The source is plain ES modules and loads as-is.
+
+A setup page opens on first install. **Until you finish it, no automatic trigger will
+fire** — not on browser close, not on idle, not on screen lock. It shows the sites that
+would actually be affected, read from your real cookies, and lets you exempt any of them
+before anything runs. Manual logout works immediately; the gate is about surprise, not
+about withholding the feature.
+
+## What it actually does
+
+"Log out of all sessions" means three different things, and the extension distinguishes
+them in every report rather than painting everything green:
+
+| Result | Meaning |
+|---|---|
+| **revoked** | The site confirmed it killed sessions on your other devices too. Only claimed by recipes whose behaviour has been verified on a second device — **none are, yet** |
+| **signed out** | This browser's session was ended server-side; other devices unknown |
+| **cleared locally** | Cookies and storage deleted here. A token stolen earlier may still work elsewhere |
+| **failed** | Could not do even that |
+
+A partial result says so: if a deep wipe cleared cookies but Chrome refused to clear
+IndexedDB, the report names what survived instead of reporting a clean sweep.
+
+Deleting cookies defeats *local* session hijacking — malware or another user reading your
+cookie jar. It does nothing about a token already exfiltrated to an attacker's machine.
+Only the first two rows do that, and only where the site provides the means.
+
+## How server-side logout works
+
+Replaying a captured logout request does not work: CSRF tokens rotate, and a `fetch()`
+from the extension origin is cross-site, so `SameSite` cookies are never attached.
+
+Instead the extension opens a **background tab on the site's own origin** and drives
+the site's own controls. A click inside the page carries the live CSRF token, the right
+`Origin`/`Referer`, and every cookie. Four tiers are tried in order:
+
+1. **Curated recipe** — for sites with a documented logout URL (`src/core/recipes.js`).
+   Deliberately only three: recipes that clicked at "sign out everywhere" buttons were all
+   removed after the first one checked turned out to be clicking for a control that does
+   not exist
+2. **OIDC RP-initiated logout** — discovered from `/.well-known/openid-configuration`;
+   generic coverage for anything behind Okta, Entra, Auth0, and friends
+3. **Heuristic** — find and click whatever reads as a logout control
+4. **Local destruction** — always runs, whatever happened above
+
+Recipes are **data, never code**. The interpreter ships inside the extension and nothing is
+`eval`'d, so the recipe table can later be fetched as a signed remote bundle without
+breaking the Web Store's remote-code rule.
+
+## Defaults
+
+| Trigger | Default |
+|---|---|
+| Browser closes | On, for high and critical sites |
+| Inactivity | On, 30 min, critical sites |
+| Screen lock / sleep | On, for high and critical sites |
+| Contact sites to revoke | On, for high and critical sites |
+
+Risk tiers are assigned automatically from a bundled classification plus keyword and TLD
+heuristics, so an unlisted bank still lands in the right tier.
+
+Deep wipes (which include IndexedDB and cache storage) are reserved for critical sites.
+Many web apps keep drafts and offline documents in IndexedDB, and a zero-config extension
+that destroys those on every site at browser close would lose someone's work on day one.
+
+## If the browser closes during a run
+
+Open **Settings → Check it works → Run diagnostics** and look at the **Activity log** at
+the bottom. It records every step of every run and survives browser restarts, so it shows
+exactly where things got to. The key thing to look for is whether `run:complete` appears
+before the next `browser:startup` — that separates "died mid-step" from "finished, and the
+browser went away anyway". **Copy log** puts it on the clipboard.
+
+Open tabs on a cleared site are reloaded automatically, so the signed-out state is visible
+straight away. Turn that off in Settings → Your open tabs if you would rather refresh pages
+yourself.
+
+## Checking it works
+
+Settings → **Check it works** → **Run diagnostics**. Fourteen checks that run the real code
+against the real browser APIs and report what works on your machine, with a **Copy report**
+button for sharing the results.
+
+Safe to run at any time: it counts your cookies without reading or deleting them, and the
+only data it clears belongs to a reserved test domain that cannot exist.
+
+## What clearing cookies does not do
+
+Deleting a site's cookies does not end your session on the site's side. It **orphans** it:
+the session stays listed as active, and remains usable by anyone who already holds the
+token. Clear GitHub four times and GitHub will show you four abandoned-but-live sessions.
+
+So after every run the result says, per site, what would actually end those sessions:
+
+- Sites with **no bulk revoke at all** — GitHub is a confirmed example — say so plainly, and
+  point out that revoking one at a time or changing your password are the only options.
+- Sites with a **session page** get a direct link to it.
+- Sites with **nothing known** are told the truth: check the security settings, and a
+  password change is usually the only thing that ends sessions elsewhere.
+
+No extension can revoke a session on a site that provides no way to do it. Saying which
+sites those are is the next most useful thing.
+
+## Sites that share a sign-in
+
+Some sites cannot be logged out on their own. YouTube's session is issued by Google, so
+clearing YouTube alone achieves nothing — the next visit gets a fresh session from the
+Google login that is still active. Instagram sits behind Facebook the same way, and Outlook
+behind Microsoft.
+
+Session Sentinel clears these as a group, limited to the sites you are actually signed into,
+and tells you which ones came along. If you have marked one of them **never clear**, it says
+so, because that site will sign the others back in.
+
+## Keeping a site signed in
+
+Some sites you never want logged out — YouTube, a music player, a home dashboard. Tick
+**Never clear this site** in the popup (it sits right under the current site's name) and
+that site is skipped by every automatic trigger *and* by **Log out of all sessions**. The
+big button deliberately does not override it.
+
+Each row in the signed-in list has the same control as a **Keep** checkbox, and the options
+page exposes it as the *never clear* handling mode. Kept sites are counted in the popup so
+you can see at a glance what the next run will leave alone.
+
+You can still clear a kept site deliberately — the per-site **Log out** and **Clear data**
+buttons always work. Keeping a site protects it from automation, not from you.
+
+## Privacy
+
+- No account, no telemetry, no analytics, no network destination for anything it observes
+- All state in `chrome.storage.local`
+- The site list is derived from your own cookie jar and never leaves the machine
+
+`<all_urls>` is requested at install because the alternative — per-site permission grants —
+means the extension silently does nothing on sites you never approved, which is a worse
+security outcome than a single honest prompt.
+
+## Tests
+
+Two suites, because the risky code splits in two.
+
+**Decision logic** — risk classification, domain parsing, the planner that decides what
+gets destroyed, and the navigation trust policy. No `chrome.*` calls, so it runs in plain
+node:
+
+```bash
+npm test
+```
+
+**Injected page logic** — `pageStep`, the function that runs inside real pages and does the
+clicking. It needs a DOM, so it runs in a browser:
+
+```bash
+node dev/server.mjs 5599
+```
+
+Then open `http://localhost:5599/dev/step-runner.test.html` — 15 assertions, PASS/FAIL
+inline. These exist because of a real bug: an early version clicked a decoy button hidden
+with the standard screen-reader pattern (`width:0;height:0;overflow:hidden`) and reported
+success. Padding gives such an element a non-zero box, so no CSS check rules it out
+reliably. The runner now prefers the innermost, largest, hit-testable match, and refuses to
+click anything sitting under an overlay.
+
+The same server hosts UI previews with a stubbed `chrome.*` API:
+`dev/popup-preview.html` and `dev/options-preview.html`.
+
+## Layout
+
+```
+src/core/       pure logic - no chrome.* anywhere, unit-testable in node
+src/platform/   the only place chrome.* is touched
+src/engine/     orchestration: tier selection, execution, verification, reporting
+src/background/ event wiring (triggers)
+src/ui/         popup and options
+data/           bundled risk classification
+```
+
+The rule that keeps this extensible: `core/` never imports `chrome`. A future Firefox
+target, or a second security module, plugs in behind `platform/` without a rewrite.
+
+## Icons
+
+```bash
+npm run icons
+```
+
+Regenerates all four sizes from [dev/make-icons.mjs](dev/make-icons.mjs), a dependency-free
+PNG encoder. The artwork is defined in normalised coordinates so every size matches, and
+the 16px favicon is hinted separately for legibility.
+
+## Documentation
+
+| | |
+|---|---|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Design rationale, the constraints behind each decision, roadmap |
+| [TESTING.md](TESTING.md) | All three test layers, including the manual smoke test |
+| [PRIVACY.md](PRIVACY.md) | Privacy policy |
+| [STORE.md](STORE.md) | Web Store submission notes and permission justifications |
+| [CHANGELOG.md](CHANGELOG.md) | What changed and why |
+
+## Security posture
+
+Three inputs to this extension are attacker-influenced, and all are constrained:
+
+- **A site's OIDC discovery document** names where to go to log out — and is served by the
+  site being logged out. Navigation is restricted to the target site or a short allowlist
+  of identity providers, checked before navigating and again after landing, because a
+  trusted endpoint can redirect.
+- **Recipes** cannot navigate off the site they claim to log out of — including recipes
+  from a correctly signed remote bundle. A signature proves authorship, not correctness.
+- **The update channel** verifies an ECDSA P-256 signature against a pinned key before the
+  payload is treated as anything, refuses version rollbacks, re-validates every recipe, and
+  fails closed to the recipes that shipped in the extension.
+
+Covered by [tests/trust.test.mjs](tests/trust.test.mjs) and
+[tests/bundle.test.mjs](tests/bundle.test.mjs), which sign real payloads with real keys and
+then attack them.
+
+Recipe updates are **off by default** and fetch the whole list in one request — never
+queried per domain, because such a request would leak which sites you use.

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Session Sentinel</title>
+    <link rel="stylesheet" href="ui.css" />
+  </head>
+  <body class="popup">
+    <header class="header">
+      <div class="brand">
+        <svg class="mark" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+          <path d="M5 7.2V5a3 3 0 0 1 6 0v2.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
+          <rect x="2.7" y="7.2" width="10.6" height="7" rx="1.6" fill="currentColor" />
+          <circle cx="8" cy="10.2" r="1.15" fill="var(--bg)" />
+          <path d="M7.4 10.2h1.2l.35 2.1h-1.9z" fill="var(--bg)" />
+        </svg>
+        <h1>Session Sentinel</h1>
+      </div>
+      <button id="toggle-enabled" class="ghost" type="button" title="Pause or resume all protection">
+        <span id="enabled-label">Active</span>
+      </button>
+    </header>
+
+    <section class="current" id="current-site" hidden>
+      <div class="current-row">
+        <div class="current-info">
+          <span class="label">This site</span>
+          <strong id="current-domain"></strong>
+          <span class="badge" id="current-tier"></span>
+        </div>
+        <div class="current-actions">
+          <button id="logout-current" class="primary small" type="button">Log out</button>
+          <button id="clear-current" class="ghost small" type="button" title="Delete cookies and storage without contacting the site">Clear data</button>
+        </div>
+      </div>
+      <label class="keep" id="keep-current-label" title="Excluded from every automatic logout and from &quot;Log out of all sessions&quot;. You can still clear it by hand with the buttons above.">
+        <input type="checkbox" id="keep-current" />
+        <span>Never clear this site — stay signed in</span>
+      </label>
+    </section>
+
+    <button id="logout-all" class="primary block" type="button">
+      Log out of all sessions
+    </button>
+    <p class="hint" id="scope-hint"></p>
+
+    <div id="status" class="status" role="status" aria-live="polite" hidden></div>
+
+    <div id="crash-report" class="status red" hidden>
+      <strong>The browser closed during the last run.</strong>
+      <span id="crash-detail"></span>
+      <button id="crash-dismiss" class="link" type="button" style="margin-top:6px">Dismiss</button>
+    </div>
+
+    <section class="sites">
+      <div class="sites-head">
+        <h2>Signed in</h2>
+        <span id="site-count" class="count"></span>
+      </div>
+      <input
+        id="site-filter"
+        class="filter"
+        type="search"
+        placeholder="Filter sites…"
+        aria-label="Filter the list of signed-in sites"
+        autocomplete="off"
+      />
+      <ul id="site-list" class="site-list" aria-label="Sites you are signed into"></ul>
+    </section>
+
+    <footer class="footer">
+      <span id="last-run" class="muted"></span>
+      <button id="open-options" class="link" type="button">Settings</button>
+    </footer>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

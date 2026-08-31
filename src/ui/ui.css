@@ -1,0 +1,250 @@
+/* Shared styling for the popup and the options page. Follows the browser's theme. */
+
+:root {
+  color-scheme: light dark;
+
+  --bg: #ffffff;
+  --bg-sunken: #f5f6f8;
+  --border: #e2e5ea;
+  --text: #14171c;
+  --text-muted: #5d6673;
+  --accent: #1f6feb;
+  --accent-text: #ffffff;
+  --green: #1a7f4b;
+  --amber: #9a6400;
+  --red: #b4232c;
+  --critical: #b4232c;
+  --high: #9a6400;
+  --medium: #3f6ea8;
+  --low: #5d6673;
+  --radius: 8px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16191d;
+    --bg-sunken: #1e2228;
+    --border: #2c323a;
+    --text: #e7eaee;
+    --text-muted: #99a2ae;
+    --accent: #4c8dff;
+    --accent-text: #0b0d10;
+    --green: #4cc38a;
+    --amber: #e0a63c;
+    --red: #ff6b6b;
+    --critical: #ff6b6b;
+    --high: #e0a63c;
+    --medium: #7fa8e0;
+    --low: #99a2ae;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+body.popup { width: 380px; padding: 12px; }
+body.options { max-width: 720px; margin: 0 auto; padding: 28px 24px 48px; }
+
+h1 { font-size: 14px; margin: 0; font-weight: 650; }
+h2 { font-size: 12px; margin: 0; font-weight: 650; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); }
+h3 { font-size: 13px; margin: 0 0 4px; font-weight: 650; }
+p { margin: 0; }
+
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-bottom: 10px; margin-bottom: 10px; border-bottom: 1px solid var(--border);
+}
+.brand { display: flex; align-items: center; gap: 8px; }
+/* The toolbar icon is a dark tile with a white disc, which vanishes against a dark
+   popup background. In-app the mark is drawn as a glyph in currentColor instead, so it
+   adapts to the theme and stays sharp at any size. */
+.mark { display: block; color: var(--text); flex-shrink: 0; }
+.mark-lg { color: var(--accent); }
+
+button { font: inherit; cursor: pointer; border-radius: var(--radius); border: 1px solid transparent; }
+button:disabled { opacity: .55; cursor: default; }
+
+/* Keyboard users must be able to see where they are. The default outline disappears
+   against the sunken panels, so focus gets its own ring on every interactive element. */
+:where(button, select, input, a, label.keep):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); padding: 8px 12px; font-weight: 600; }
+.primary:hover:not(:disabled) { filter: brightness(1.08); }
+.ghost { background: transparent; color: var(--text); border-color: var(--border); padding: 6px 10px; }
+.ghost:hover:not(:disabled) { background: var(--bg-sunken); }
+.small { padding: 4px 9px; font-size: 12px; }
+.block { display: block; width: 100%; padding: 10px; font-size: 13px; }
+.link { background: none; border: none; color: var(--accent); padding: 0; text-decoration: underline; }
+
+.hint { color: var(--text-muted); font-size: 11.5px; margin: 6px 2px 10px; }
+.muted { color: var(--text-muted); font-size: 11.5px; }
+
+.current {
+  display: flex; flex-direction: column; gap: 8px;
+  background: var(--bg-sunken); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 9px 10px; margin-bottom: 10px;
+}
+.current-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.current-info { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.current-info strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.current-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.label { color: var(--text-muted); font-size: 11px; }
+
+.badge {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  padding: 2px 6px; border-radius: 999px; border: 1px solid currentColor; flex-shrink: 0;
+}
+.badge.critical { color: var(--critical); }
+.badge.high { color: var(--high); }
+.badge.medium { color: var(--medium); }
+.badge.low { color: var(--low); }
+
+.status {
+  border: 1px solid var(--border); border-left-width: 3px;
+  border-radius: var(--radius); padding: 8px 10px; margin-bottom: 10px; font-size: 12px;
+}
+.status.green { border-left-color: var(--green); }
+.status.amber { border-left-color: var(--amber); }
+.status.red { border-left-color: var(--red); }
+.status.busy { border-left-color: var(--accent); }
+
+.guidance { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 6px; }
+.guidance-item { margin-bottom: 8px; }
+.guidance-item:last-child { margin-bottom: 0; }
+.guidance-item strong { display: block; margin-bottom: 2px; }
+.guidance-item div { color: var(--text-muted); margin-bottom: 3px; }
+
+.sites-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
+.count { color: var(--text-muted); font-size: 11.5px; }
+
+/* With a couple of hundred signed-in sites the list is unusable without a filter. */
+.filter {
+  width: 100%; font: inherit; font-size: 12px; margin-bottom: 6px;
+  padding: 5px 8px; border-radius: 6px;
+  color: var(--text); background: var(--bg); border: 1px solid var(--border);
+}
+.filter::placeholder { color: var(--text-muted); }
+.filter:focus { border-color: var(--accent); }
+
+.site-list { list-style: none; margin: 0; padding: 0; max-height: 240px; overflow-y: auto; }
+.site-list li {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 4px; border-bottom: 1px solid var(--border);
+}
+.site-list li:last-child { border-bottom: none; }
+.site-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.site-actions { display: flex; gap: 4px; align-items: center; flex-shrink: 0; }
+/* Only the destructive action hides until hover. The "keep" control must always be
+   visible: a protection the user cannot see is a protection they do not know they have. */
+.site-actions .ghost.reveal { opacity: 0; transition: opacity .12s; }
+.site-list li:hover .site-actions .ghost.reveal,
+.site-list li:focus-within .site-actions .ghost.reveal { opacity: 1; }
+.site-list li.kept .site-name { color: var(--text-muted); }
+.site-list li.empty {
+  display: block; text-align: center; color: var(--text-muted);
+  padding: 18px 8px; border-bottom: none; font-size: 12px;
+}
+
+.keep {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11.5px; color: var(--text-muted); cursor: pointer; user-select: none;
+}
+.keep input[type="checkbox"] { width: 14px; height: 14px; margin: 0; flex-shrink: 0; accent-color: var(--accent); }
+.keep:hover { color: var(--text); }
+#keep-current-label { padding-top: 7px; border-top: 1px solid var(--border); font-size: 12px; }
+#keep-current-label:has(input:checked) { color: var(--green); font-weight: 600; }
+.site-list li.kept .keep { color: var(--green); font-weight: 600; }
+
+.footer {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 12px;
+  margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border);
+}
+/* The run summary wraps; the link must never be pushed under it or overlapped. */
+.footer .muted {
+  flex: 1; min-width: 0;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+}
+.footer .link { flex-shrink: 0; white-space: nowrap; }
+
+/* --- options page --------------------------------------------------------- */
+
+.card {
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 16px 18px; margin-bottom: 14px; background: var(--bg-sunken);
+}
+.row {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--border);
+}
+.row:last-child { border-bottom: none; }
+.row-text { max-width: 460px; }
+.row-text p { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+.row-control { flex-shrink: 0; display: flex; align-items: center; gap: 8px; }
+
+select, input[type="number"] {
+  font: inherit; color: var(--text); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px;
+}
+input[type="number"] { width: 70px; }
+input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); }
+
+.note {
+  border-left: 3px solid var(--amber); background: var(--bg-sunken);
+  padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 12px 0 20px;
+  color: var(--text-muted); font-size: 12px;
+}
+.note strong { color: var(--text); }
+
+/* --- welcome / first run --------------------------------------------------- */
+
+body.welcome { max-width: 640px; }
+.welcome-head { display: flex; align-items: center; gap: 16px; margin-bottom: 22px; }
+.welcome-head h1 { margin: 0 0 2px; }
+.welcome-head .mark-lg { flex-shrink: 0; }
+
+ul.plain { margin: 0; padding-left: 18px; }
+ul.plain li { margin-bottom: 8px; }
+ul.plain li:last-child { margin-bottom: 0; }
+
+.site-list.tall { max-height: 260px; }
+.welcome .site-list li { padding: 7px 2px; }
+.welcome .keep { margin-left: auto; }
+
+.welcome-actions { display: flex; gap: 10px; align-items: center; }
+.welcome-actions .primary { padding: 10px 16px; }
+
+/* The site table can run to hundreds of rows. Without a filter and a scroll box the
+   settings page becomes one enormous list nobody can navigate. */
+.sites-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.sites-toolbar .filter { flex: 1; margin-bottom: 0; }
+.sites-toolbar .count { flex-shrink: 0; white-space: nowrap; }
+.sites-toolbar .keep { flex-shrink: 0; }
+
+.table-scroll { max-height: 420px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
+.table-scroll table { border-collapse: separate; border-spacing: 0; }
+.table-scroll thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--bg-sunken); border-bottom: 1px solid var(--border);
+}
+.table-scroll td { border-bottom: 1px solid var(--border); }
+
+.log {
+  font: 11.5px/1.5 ui-monospace, Consolas, monospace;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  padding: 10px; margin: 0; max-height: 320px; overflow: auto;
+  white-space: pre; color: var(--text-muted);
+}
+
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--border); }
+th { color: var(--text-muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }

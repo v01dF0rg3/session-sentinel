@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>step-runner regression tests</title>
+    <style>
+      body { font: 14px/1.5 system-ui, sans-serif; padding: 24px; max-width: 780px; margin: 0 auto; }
+      #stage { border: 1px dashed #bbb; padding: 12px; margin: 16px 0; position: relative; min-height: 90px; }
+      button { font: inherit; padding: 6px 10px; margin: 3px 0; }
+      .sr-only { position: absolute; width: 0; height: 0; overflow: hidden; }
+      .clipped { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+      .offleft { position: absolute; left: -9999px; }
+      .display-none { display: none; }
+      .overlay { position: absolute; inset: 0; background: rgba(0,0,0,.55); z-index: 99; }
+      li { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; }
+      .pass { color: #1a7f4b; } .fail { color: #b4232c; font-weight: 700; }
+      #summary { font-weight: 700; font-size: 16px; margin-top: 12px; }
+    </style>
+  </head>
+  <body>
+    <h1>step-runner regression tests</h1>
+    <p>
+      Exercises <code>pageStep</code> against the hiding patterns real sites use. The point
+      of these is not that a step fails gracefully - it is that a step never reports
+      <code>ok: true</code> for a click that did not land on the intended control.
+    </p>
+
+    <div id="stage"></div>
+    <ol id="results"></ol>
+    <div id="summary">running...</div>
+
+    <script type="module">
+      import { pageStep } from '../src/engine/step-runner.js';
+
+      const stage = document.getElementById('stage');
+      const results = document.getElementById('results');
+      let passed = 0;
+      let failed = 0;
+
+      function check(name, condition, got) {
+        const li = document.createElement('li');
+        li.className = condition ? 'pass' : 'fail';
+        li.textContent = `${condition ? 'PASS' : 'FAIL'}  ${name}${condition ? '' : `  -> got ${JSON.stringify(got)}`}`;
+        results.append(li);
+        condition ? passed++ : failed++;
+      }
+
+      function setStage(html) {
+        stage.innerHTML = html;
+        window.__clicked = null;
+        for (const el of stage.querySelectorAll('[id]')) {
+          el.addEventListener('click', () => { window.__clicked = el.id; });
+        }
+      }
+
+      const SEL = 'button, a, div[role="button"], input[type="submit"]';
+
+      // --- 1. the regression: hidden decoys must never absorb the click -------------
+      // Every decoy below carries the target phrase and appears BEFORE the real
+      // control in DOM order, so a weak visibility check clicks the wrong thing and
+      // still reports success.
+      setStage(`
+        <button id="d-none" class="display-none">Revoke all sessions</button>
+        <button id="d-sronly" class="sr-only">Revoke all sessions</button>
+        <button id="d-clipped" class="clipped">Revoke all sessions</button>
+        <button id="d-offleft" class="offleft">Revoke all sessions</button>
+        <button id="d-disabled" disabled>Revoke all sessions</button>
+        <div id="d-aria" aria-hidden="true"><button id="d-inaria">Revoke all sessions</button></div>
+        <button id="real">Revoke all sessions</button>
+      `);
+      let r = await pageStep({ op: 'clickText', selector: SEL, text: 'revoke all sessions' });
+      check('clickText skips every hidden decoy and hits the real control', window.__clicked === 'real', window.__clicked);
+      check('clickText reports ok for the real click', r.ok === true, r);
+
+      // --- 2. huge containers are not clickable targets ------------------------------
+      setStage(`
+        <div id="huge" role="button">${'This page explains that you should revoke all sessions if you suspect a compromise. '.repeat(8)}</div>
+        <button id="real2">Revoke all sessions</button>
+      `);
+      await pageStep({ op: 'clickText', selector: SEL, text: 'revoke all sessions' });
+      check('clickText ignores page-sized containers', window.__clicked === 'real2', window.__clicked);
+
+      // --- 3. obscured controls must fail loudly, not silently succeed ---------------
+      setStage(`
+        <button id="covered">Revoke all sessions</button>
+        <div class="overlay"></div>
+      `);
+      r = await pageStep({ op: 'clickText', selector: SEL, text: 'revoke all sessions' });
+      check('a control under an overlay is reported as obscured', r.ok === false, r);
+      check('an obscured control is not clicked', window.__clicked === null, window.__clicked);
+
+      // --- 4. aria-label only controls ----------------------------------------------
+      setStage('<button id="aria-only" aria-label="Sign out of all devices"><svg width="14" height="14"></svg></button>');
+      r = await pageStep({ op: 'clickText', selector: SEL, text: 'sign out of all devices' });
+      check('matches on aria-label', window.__clicked === 'aria-only', window.__clicked);
+      check('detail names the control rather than an empty string', /Sign out of all devices/i.test(r.detail), r);
+
+      // --- 5. assertions --------------------------------------------------------------
+      setStage('<form id="f" action="/sessions/revoke_all"><button type="submit" id="submit-btn">Revoke</button></form>');
+      document.getElementById('f').addEventListener('submit', (e) => { e.preventDefault(); e.target.remove(); });
+
+      r = await pageStep({ op: 'assertPresent', selector: 'form[action*="revoke"]' });
+      check('assertPresent finds the form', r.ok === true, r);
+      r = await pageStep({ op: 'assertAbsent', selector: 'form[action*="revoke"]' });
+      check('assertAbsent fails while the form is still there', r.ok === false, r);
+
+      await pageStep({ op: 'clickText', selector: SEL, text: 'revoke' });
+      r = await pageStep({ op: 'assertAbsent', selector: 'form[action*="revoke"]' });
+      check('assertAbsent passes once the form is gone', r.ok === true, r);
+
+      // --- 6. waitFor -----------------------------------------------------------------
+      setStage('<div id="late" style="display:none">confirmation</div>');
+      setTimeout(() => { document.getElementById('late').style.display = 'block'; }, 700);
+      r = await pageStep({ op: 'waitFor', selector: '#late', timeoutMs: 3000 });
+      check('waitFor resolves when the element appears', r.ok === true, r);
+
+      r = await pageStep({ op: 'waitFor', selector: '#never', timeoutMs: 500 });
+      check('waitFor times out cleanly', r.ok === false, r);
+
+      // --- 7. malformed input never throws --------------------------------------------
+      r = await pageStep({ op: 'click', selector: 'button[[[broken' });
+      check('invalid selector returns a failure instead of throwing', r.ok === false, r);
+
+      r = await pageStep({ op: 'exec', selector: 'a' });
+      check('unknown op is rejected', r.ok === false && /unsupported/.test(r.detail), r);
+
+      r = await pageStep({ op: 'sleep', ms: 50 });
+      check('sleep works', r.ok === true, r);
+
+      const summary = document.getElementById('summary');
+      summary.textContent = `${passed} passed, ${failed} failed`;
+      summary.className = failed === 0 ? 'pass' : 'fail';
+      window.__testResults = { passed, failed };
+    </script>
+  </body>
+</html>
