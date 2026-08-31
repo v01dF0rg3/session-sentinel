@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.17.0 — 31 August 2026
+
+### Offer the password route before logging out
+
+Most sites cannot end sessions on your other devices, so a logout only affects this
+browser. Where that is true, the extension now says so *before* it acts, and offers the
+thing that does work.
+
+The ordering is the entire point. If someone else is holding a live session, logging
+yourself out is the wrong first move: it surrenders the one authenticated session you
+control and leaves theirs running. Changing the password from the session you already have
+ends every other session at once and keeps you signed in. Offering that afterwards would be
+useless, because by then the useful option has been thrown away.
+
+Clicking **I think I have been hacked** opens the site's password settings and deliberately
+does *not* log you out. **No, just log me out** proceeds as before.
+
+Defaults to high-risk sites rather than all of them: a prompt that fires on every logout is
+one people learn to click through, which wastes it exactly when it matters. Configurable to
+every site or never.
+
+Password-change URLs for 19 sites, each checked to resolve. Proper display names too —
+"Github" and "Linkedin" read as carelessness in a tool asking to be trusted.
+
+### Fixed
+
+- **"Log out of all sessions" would have taken half an hour.** 0.15.0 made explicit
+  logouts attempt a server-side sign-out regardless of tier, which was right for one site
+  and wrong for all of them at once: a profile with 218 signed-in sites would have spent
+  roughly ten seconds each opening tabs, uninterruptibly. Picking a single site still
+  ignores the threshold; bulk runs respect it again.
+
+### Tests
+
+74.
+
 ## 0.16.0 — 31 August 2026
 
 ### Google verified, and the whole chain with it

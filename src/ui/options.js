@@ -75,6 +75,7 @@ function render() {
 
   /** @type {HTMLInputElement} */ (byId('notifications')).checked = s.notifications;
   /** @type {HTMLSelectElement} */ (byId('tab-handling')).value = s.tabHandling;
+  /** @type {HTMLSelectElement} */ (byId('compromise-prompt')).value = s.compromisePrompt;
   /** @type {HTMLInputElement} */ (byId('recipe-enabled')).checked = s.recipeUpdates.enabled;
   renderRecipeStatus();
 
@@ -305,6 +306,10 @@ byId('open-diagnostics').addEventListener('click', () => {
   // is wedged, since that is one of the things it exists to reveal.
   window.open(chrome.runtime.getURL('src/ui/diagnostics.html'), '_blank');
 });
+
+byId('compromise-prompt').addEventListener('change', (e) =>
+  save({ compromisePrompt: /** @type {HTMLSelectElement} */ (e.target).value })
+);
 
 byId('tab-handling').addEventListener('change', (e) =>
   save({ tabHandling: /** @type {HTMLSelectElement} */ (e.target).value })

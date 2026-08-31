@@ -97,6 +97,26 @@
 
       <div class="row">
         <div class="row-text">
+          <h3>Warn before logging out of an account you cannot fully secure</h3>
+          <p>
+            Most sites cannot end sessions on your other devices, so logging out only
+            affects this browser. If someone else is using your account, changing your
+            password is the better move — it ends every other session at once and keeps you
+            signed in here. This offers that choice before logging out, while you still
+            have a session to change the password from.
+          </p>
+        </div>
+        <div class="row-control">
+          <select id="compromise-prompt">
+            <option value="high">high-risk sites</option>
+            <option value="always">every site</option>
+            <option value="never">never</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="row-text">
           <h3>Your open tabs</h3>
           <p>
             A page you already have open keeps its session in memory, so it carries on

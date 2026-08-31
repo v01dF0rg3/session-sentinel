@@ -4,6 +4,8 @@
  */
 
 import { outcomeColor, summarize } from '../engine/report.js';
+import { compromiseAdviceFor } from '../core/session-pages.js';
+import { atLeast } from '../core/risk.js';
 
 /** @type {any} */
 let overview = null;
@@ -130,7 +132,10 @@ function render() {
     const logout = document.createElement('button');
     logout.className = 'ghost small reveal';
     logout.textContent = 'Log out';
-    logout.addEventListener('click', () => act(`Signing out of ${site.domain}...`, { type: 'runSite', domain: site.domain }));
+    logout.addEventListener('click', () => {
+      if (maybePromptCompromise(site.domain, site.tier)) return;
+      act(`Signing out of ${site.domain}...`, { type: 'runSite', domain: site.domain });
+    });
 
     actions.append(logout, buildKeepControl(site.domain, site.mode === 'ignored', 'Keep'));
     row.append(badge, name, actions);
@@ -240,6 +245,83 @@ function worstColor(report) {
 }
 
 /**
+ * Offer the password-change route before logging out, where it applies.
+ *
+ * The ordering is the substance of this. If someone else is using your account, logging
+ * yourself out is the wrong first move: it gives up the one authenticated session you
+ * control and leaves theirs running. Changing the password from the session you already
+ * have kills every other session at once and keeps you signed in.
+ *
+ * Offering that *after* the logout would be useless, so the prompt interrupts.
+ *
+ * @param {string} domain
+ * @param {string} tier
+ * @returns {boolean} true if a prompt was shown and the logout should wait
+ */
+function maybePromptCompromise(domain, tier) {
+  const setting = overview?.settings?.compromisePrompt ?? 'high';
+  if (setting === 'never') return false;
+  if (setting === 'high' && !atLeast(/** @type {any} */ (tier), 'high')) return false;
+
+  const advice = compromiseAdviceFor(domain);
+  if (!advice) return false;
+
+  setStatus('', 'amber');
+  el.status.replaceChildren();
+
+  const title = document.createElement('strong');
+  title.textContent = advice.title;
+  title.style.display = 'block';
+  title.style.marginBottom = '4px';
+
+  const explanation = document.createElement('div');
+  explanation.textContent = advice.explanation;
+  explanation.style.marginBottom = '6px';
+
+  const adviceText = document.createElement('div');
+  adviceText.textContent = advice.advice;
+  adviceText.style.marginBottom = '8px';
+
+  const actions = document.createElement('div');
+  actions.style.display = 'flex';
+  actions.style.gap = '6px';
+  actions.style.flexWrap = 'wrap';
+
+  const compromised = document.createElement('button');
+  compromised.className = 'primary small';
+  compromised.textContent = 'I think I have been hacked';
+  compromised.title = `Opens ${advice.domain} password settings. Does NOT log you out.`;
+  compromised.addEventListener('click', () => {
+    // Deliberately does not log out: the user keeps the session they need in order to
+    // change the password.
+    chrome.tabs.create({ url: advice.passwordUrl });
+    setStatus(`Opened ${advice.domain} password settings. You have not been logged out — change the password from that page and every other session ends.`, 'amber');
+  });
+
+  const justLogout = document.createElement('button');
+  justLogout.className = 'ghost small';
+  justLogout.textContent = 'No, just log me out';
+  justLogout.addEventListener('click', () =>
+    act(`Signing out of ${domain}...`, { type: 'runSite', domain })
+  );
+
+  actions.append(compromised, justLogout);
+  el.status.append(title, explanation, adviceText, actions);
+
+  if (advice.sessionsUrl) {
+    const link = document.createElement('button');
+    link.className = 'link';
+    link.style.marginTop = '6px';
+    link.style.display = 'block';
+    link.textContent = `Or review ${advice.sessionsLabel} yourself`;
+    link.addEventListener('click', () => chrome.tabs.create({ url: advice.sessionsUrl }));
+    el.status.append(link);
+  }
+
+  return true;
+}
+
+/**
  * Spell out what actually happened, including the part people would rather not read.
  * @param {any} report
  * @returns {string}
@@ -307,8 +389,11 @@ function setBusy(busy) {
 el.logoutAll.addEventListener('click', () => act('Ending sessions...', { type: 'runNow' }));
 
 el.logoutCurrent.addEventListener('click', () => {
-  if (!overview?.currentDomain) return;
-  act(`Signing out of ${overview.currentDomain}...`, { type: 'runSite', domain: overview.currentDomain });
+  const domain = overview?.currentDomain;
+  if (!domain) return;
+  const tier = overview.sites.find((/** @type {any} */ s) => s.domain === domain)?.tier ?? 'low';
+  if (maybePromptCompromise(domain, tier)) return;
+  act(`Signing out of ${domain}...`, { type: 'runSite', domain });
 });
 
 el.clearCurrent.addEventListener('click', () => {

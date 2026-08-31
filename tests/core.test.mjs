@@ -15,7 +15,7 @@ import { buildPlan, resolveTier } from '../src/core/plan.js';
 import { expandForIdentity } from '../src/core/identity.js';
 import { DEFAULT_SETTINGS, withDefaults } from '../src/core/policy.js';
 import { findRecipe, heuristicRecipe, isValidRecipe, RECIPES } from '../src/core/recipes.js';
-import { revokeGuidanceFor, sessionPageFor } from '../src/core/session-pages.js';
+import { compromiseAdviceFor, revokeGuidanceFor, sessionPageFor } from '../src/core/session-pages.js';
 
 test('registrable domain handles multi-label suffixes', () => {
   assert.equal(registrableDomain('mail.google.com'), 'google.com');
@@ -208,18 +208,24 @@ test('federated expansion is what makes a YouTube logout work at all', () => {
   assert.equal(byDomain['youtube.com'].serverLogout, true);
 });
 
-test('an explicit logout reaches every site, not just high-risk ones', () => {
+test('picking one site tries the real sign-out at any tier', () => {
   // Without a server-side logout a session is abandoned rather than ended: still live,
-  // still listed, and no longer visible to the user. That is worth a few seconds on any
-  // site the user explicitly asked about - youtube.com is 'low' tier and was being
-  // orphaned every time.
+  // still listed, and no longer visible to the user. Worth a few seconds when the user
+  // pointed at one site - youtube.com is 'low' tier and was orphaned every time.
   const low = buildPlan(['youtube.com'], 'manualSite', READY);
-  assert.equal(low.targets[0].serverLogout, true, 'an explicit click should try the real sign-out');
+  assert.equal(low.targets[0].serverLogout, true);
+});
 
-  const alsoLow = buildPlan(['somerandomblog.net'], 'manual', READY);
-  assert.equal(alsoLow.targets[0].serverLogout, true);
+test('bulk runs keep the tier threshold, or they would take half an hour', () => {
+  // A real profile had 218 signed-in sites. At roughly ten seconds each, ignoring the
+  // threshold here would lock the browser into something the user cannot interrupt.
+  const all = buildPlan(['youtube.com', 'somerandomblog.net', 'chase.com'], 'manual', READY);
+  const byDomain = Object.fromEntries(all.targets.map((t) => [t.domain, t]));
 
-  // Automatic runs keep the threshold: they are unattended and hit many sites at once.
+  assert.equal(byDomain['youtube.com'].serverLogout, false, 'low tier is skipped in bulk');
+  assert.equal(byDomain['somerandomblog.net'].serverLogout, false);
+  assert.equal(byDomain['chase.com'].serverLogout, true, 'critical still gets the real sign-out');
+
   const auto = buildPlan(['youtube.com'], 'browserClose', withDefaults({ onboarded: true, onBrowserClose: { enabled: true, minTier: 'low' } }));
   assert.equal(auto.targets[0].serverLogout, false, 'scheduled runs stay cheap');
 });
@@ -305,6 +311,41 @@ test('sites without automation still point the user at their session list', () =
   assert.ok(sessionPageFor('github.com'), 'github has a session list worth linking to');
   assert.match(sessionPageFor('github.com').url, /^https:\/\/github\.com\//);
   assert.equal(sessionPageFor('somerandomblog.net'), null);
+});
+
+test('the compromise route is offered before logout, not after', () => {
+  // If someone else holds a live session, logging yourself out is the wrong first move:
+  // it surrenders the one authenticated session you control and leaves theirs running.
+  // Changing the password from the session you already have ends every other session and
+  // keeps you signed in - which is only possible if you have not just logged out.
+  const advice = compromiseAdviceFor('github.com');
+  assert.equal(advice.domain, 'github.com');
+  assert.match(advice.title, /^GitHub cannot sign out your other devices$/);
+  assert.match(advice.explanation, /no "sign out everywhere"/);
+  assert.match(advice.explanation, /verify your identity by email/);
+  assert.match(advice.advice, /change your password instead/);
+  assert.match(advice.advice, /leaves this window signed in/);
+  assert.equal(advice.passwordUrl, 'https://github.com/settings/security');
+  assert.equal(advice.sessionsUrl, 'https://github.com/settings/sessions');
+});
+
+test('sites are named properly, not naively capitalised', () => {
+  // "Github" and "Linkedin" read as carelessness in a tool asking to be trusted.
+  assert.match(compromiseAdviceFor('linkedin.com').title, /^LinkedIn/);
+  assert.match(compromiseAdviceFor('icloud.com').title, /^iCloud/);
+  assert.match(compromiseAdviceFor('paypal.com').title, /^PayPal/);
+});
+
+test('no advice is offered where there is nothing to act on', () => {
+  // Without a known password page there is no action to offer, so the popup should just
+  // log the user out rather than interrupt them with a dead end.
+  assert.equal(compromiseAdviceFor('somerandomblog.net'), null);
+});
+
+test('the warning defaults to high-risk sites only', () => {
+  // A prompt that fires on every logout is one people learn to click through, which
+  // wastes it exactly when it matters.
+  assert.equal(DEFAULT_SETTINGS.compromisePrompt, 'high');
 });
 
 test('a site with no bulk revoke says so, and names the alternative', () => {

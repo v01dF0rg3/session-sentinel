@@ -128,13 +128,16 @@ export function buildPlan(domains, trigger, settings) {
       tierReason: reason,
       depth,
       dataTypes: DEPTH_DATA_TYPES[depth],
-      // An explicit click is worth a few seconds on any site. Without a server-side
-      // logout the session is not ended, only abandoned - it stays live and listed on the
-      // site while the user believes it is gone. The tier threshold still applies to
-      // automatic runs, where the cost is paid unattended and across many sites at once.
+      // Picking ONE site is worth a few seconds on any tier: without a server-side logout
+      // the session is not ended, only abandoned - still live, still listed, no longer
+      // visible to the user.
+      //
+      // "Log out of all sessions" keeps the threshold, and must. A profile with a couple
+      // of hundred signed-in sites would otherwise spend ten seconds each opening tabs,
+      // which is half an hour of the browser doing something the user cannot interrupt.
       serverLogout:
         settings.serverLogout.enabled &&
-        (!automatic || atLeast(tier, settings.serverLogout.minTier))
+        (trigger === 'manualSite' || atLeast(tier, settings.serverLogout.minTier))
     });
   }
 

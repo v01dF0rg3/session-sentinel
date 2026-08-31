@@ -19,6 +19,7 @@
     sites: { 'netflix.com': { mode: 'ignored' } },
     notifications: false,
     tabHandling: 'reload',
+    compromisePrompt: 'high',
     recipeUpdates: {
       enabled: false,
       url: 'https://session-sentinel.pages.dev/recipes/bundle.json',

@@ -96,6 +96,88 @@ export function revokeGuidanceFor(domain, endedHere = false) {
   };
 }
 
+/**
+ * Proper names for the sites we speak about by name. Naive capitalisation produces
+ * "Github" and "Linkedin", which reads as carelessness in a tool asking to be trusted.
+ * Anything absent falls back to its domain, which is never wrong.
+ *
+ * @type {Record<string, string>}
+ */
+const DISPLAY_NAMES = {
+  'github.com': 'GitHub',
+  'gitlab.com': 'GitLab',
+  'google.com': 'Google',
+  'youtube.com': 'YouTube',
+  'microsoft.com': 'Microsoft',
+  'live.com': 'Microsoft',
+  'outlook.com': 'Outlook',
+  'facebook.com': 'Facebook',
+  'instagram.com': 'Instagram',
+  'x.com': 'X',
+  'linkedin.com': 'LinkedIn',
+  'dropbox.com': 'Dropbox',
+  'netflix.com': 'Netflix',
+  'spotify.com': 'Spotify',
+  'twitch.tv': 'Twitch',
+  'reddit.com': 'Reddit',
+  'apple.com': 'Apple',
+  'icloud.com': 'iCloud',
+  'amazon.com': 'Amazon',
+  'paypal.com': 'PayPal',
+  'zoom.us': 'Zoom',
+  'slack.com': 'Slack',
+  'discord.com': 'Discord'
+};
+
+/**
+ * @typedef {object} CompromiseAdvice
+ * @property {string} domain
+ * @property {string} title
+ * @property {string} explanation Why the extension cannot do this for them.
+ * @property {string} advice What actually ends every other session.
+ * @property {string} [passwordUrl]
+ * @property {string} [sessionsUrl]
+ * @property {string} [sessionsLabel]
+ */
+
+/**
+ * What to tell someone who may be compromised, before logging them out.
+ *
+ * The order matters and is the whole point. If an attacker holds a live session, logging
+ * *yourself* out is the wrong first move: it surrenders the one authenticated session you
+ * control while leaving theirs untouched. Changing the password from the session you
+ * already have terminates every other session at once and keeps you signed in.
+ *
+ * So this is offered before the logout runs, not after it - by then the useful option has
+ * been thrown away.
+ *
+ * Returns null when there is nothing actionable to offer, so the caller can just log out.
+ *
+ * @param {string} domain
+ * @returns {CompromiseAdvice | null}
+ */
+export function compromiseAdviceFor(domain) {
+  const page = SESSION_PAGES[domain];
+  if (!page?.password) return null;
+
+  const pretty = DISPLAY_NAMES[domain] ?? domain;
+
+  return {
+    domain,
+    title: `${pretty} cannot sign out your other devices`,
+    explanation:
+      page.revoke === 'individual'
+        ? `${pretty} has no "sign out everywhere" control — sessions are revoked one at a time` +
+          (page.reauth ? ', and each one needs you to verify your identity by email.' : '.')
+        : `${pretty} offers no way for an extension to end sessions on your other devices.`,
+    advice:
+      'If you think someone else is using your account, change your password instead. That ends every other session immediately, everywhere — and leaves this window signed in, which logging out would not.',
+    passwordUrl: page.password,
+    sessionsUrl: page.url,
+    sessionsLabel: page.label
+  };
+}
+
 /** @returns {number} How many sites have a known session page. */
 export function sessionPageCount() {
   return Object.keys(SESSION_PAGES).length;

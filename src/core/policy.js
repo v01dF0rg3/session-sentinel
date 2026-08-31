@@ -32,6 +32,8 @@
  * @property {Record<string, SiteOverride>} sites Keyed by registrable domain.
  * @property {boolean} notifications
  * @property {'none' | 'reload'} tabHandling What to do with your open tabs on a cleared site.
+ * @property {'high' | 'always' | 'never'} compromisePrompt When to offer the password-change
+ *   route before logging out of a site that cannot revoke sessions elsewhere.
  * @property {{ enabled: boolean, url: string, lastCheck: number, lastVersion: number, lastError: string }} recipeUpdates
  */
 
@@ -86,6 +88,12 @@ export const DEFAULT_SETTINGS = {
   // The browser crash that haunted earlier versions came from forcing tabs to about:blank,
   // which no longer happens anywhere. `tabs.reload` is the same operation as pressing F5.
   tabHandling: /** @type {'none' | 'reload'} */ ('reload'),
+
+  // Before logging out of a high-risk site that cannot end sessions elsewhere, offer the
+  // password-change route instead. Defaulting to high-risk sites rather than all of them:
+  // a prompt that appears every single time is one people learn to click through, which
+  // would waste it exactly when it matters.
+  compromisePrompt: /** @type {'high' | 'always' | 'never'} */ ('high'),
 
   // Off until a bundle host is actually published. A feature that silently fails its
   // weekly check is worse than one honestly switched off, and leaving it on would train
