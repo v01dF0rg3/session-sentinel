@@ -180,14 +180,30 @@ test('every bundled recipe validates', () => {
 });
 
 test('no bundled recipe claims revoke-everywhere without verification', () => {
-  // A GitHub recipe reported that it had revoked every session while the account's other
-  // devices stayed signed in. Until a recipe has been checked against a real account on a
-  // second device, it carries no `verified` date and the engine downgrades its claim.
+  // A GitHub recipe once reported revoking every session while the account's other devices
+  // stayed signed in. A `global` claim now requires a `verified` date, set only after
+  // someone watched a second device actually get signed out.
   for (const recipe of RECIPES) {
     if (recipe.capability === 'global') {
-      assert.equal(recipe.verified, undefined, `${recipe.domain} claims verification it does not have`);
+      assert.ok(recipe.verified, `${recipe.domain} claims global without verification`);
     }
   }
+});
+
+test('an explicit logout reaches every site, not just high-risk ones', () => {
+  // Without a server-side logout a session is abandoned rather than ended: still live,
+  // still listed, and no longer visible to the user. That is worth a few seconds on any
+  // site the user explicitly asked about - youtube.com is 'low' tier and was being
+  // orphaned every time.
+  const low = buildPlan(['youtube.com'], 'manualSite', READY);
+  assert.equal(low.targets[0].serverLogout, true, 'an explicit click should try the real sign-out');
+
+  const alsoLow = buildPlan(['somerandomblog.net'], 'manual', READY);
+  assert.equal(alsoLow.targets[0].serverLogout, true);
+
+  // Automatic runs keep the threshold: they are unattended and hit many sites at once.
+  const auto = buildPlan(['youtube.com'], 'browserClose', withDefaults({ onboarded: true, onBrowserClose: { enabled: true, minTier: 'low' } }));
+  assert.equal(auto.targets[0].serverLogout, false, 'scheduled runs stay cheap');
 });
 
 test('a global recipe must contain a click that can fail it', () => {
@@ -236,7 +252,6 @@ test('recipes only ever drive the site own sign-out', () => {
   // reached through a logout URL, where the thing being clicked is the sign-out itself.
   for (const recipe of RECIPES) {
     assert.equal(recipe.capability, 'local', `${recipe.domain} claims more than it can show`);
-    assert.equal(recipe.verified, undefined, `${recipe.domain} claims verification it does not have`);
 
     const clicks = recipe.steps.filter((s) => s.op === 'click' || s.op === 'clickText');
     if (clicks.length === 0) continue;

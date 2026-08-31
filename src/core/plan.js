@@ -128,7 +128,13 @@ export function buildPlan(domains, trigger, settings) {
       tierReason: reason,
       depth,
       dataTypes: DEPTH_DATA_TYPES[depth],
-      serverLogout: settings.serverLogout.enabled && atLeast(tier, settings.serverLogout.minTier)
+      // An explicit click is worth a few seconds on any site. Without a server-side
+      // logout the session is not ended, only abandoned - it stays live and listed on the
+      // site while the user believes it is gone. The tier threshold still applies to
+      // automatic runs, where the cost is paid unattended and across many sites at once.
+      serverLogout:
+        settings.serverLogout.enabled &&
+        (!automatic || atLeast(tier, settings.serverLogout.minTier))
     });
   }
 

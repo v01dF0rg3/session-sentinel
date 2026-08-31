@@ -75,6 +75,10 @@ export const RECIPES = [
       { op: 'clickText', selector: 'button[type="submit"], input[type="submit"]', text: 'sign out|log out' },
       { op: 'sleep', ms: 2000 }
     ],
+    // Confirmed by observation, not assumption: the account's session count on
+    // github.com/settings/sessions dropped by one after a run, where every previous
+    // cookie-only clear had increased it.
+    verified: '2026-08-31',
     note: 'Uses GitHub own sign-out form, so the session ends server-side instead of being abandoned.'
   },
   {

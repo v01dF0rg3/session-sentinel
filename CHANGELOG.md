@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.15.0 — 31 August 2026
+
+### The GitHub recipe is verified — by observation
+
+Session count on the account went **5 to 4** after a run. Every previous cookie-only clear
+had *increased* it. That is the first recipe in this project confirmed by measurement
+rather than assumption, and it carries a `verified` date accordingly.
+
+### Changed
+
+- **An explicit logout now attempts a real sign-out on every site, not just high-risk
+  ones.** youtube.com is `low` tier, so it never even tried, and was abandoned every single
+  time. Without a server-side logout a session is not ended, only orphaned: still live,
+  still listed, no longer visible to the user. That is worth a few seconds on any site
+  someone deliberately clicked. Scheduled runs keep the tier threshold, since they are
+  unattended and sweep many sites at once.
+
+- **Recorded that GitHub demands identity verification to revoke a session**, and the
+  guidance now says so before the user clicks through. It is also a third reason automating
+  revoke-all was never realistic: an automated click cannot pass an email challenge.
+
+### Tests
+
+68.
+
 ## 0.14.0 — 31 August 2026
 
 ### End sessions instead of abandoning them

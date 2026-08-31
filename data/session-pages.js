@@ -14,14 +14,19 @@
  *   'individual' - confirmed: sessions are revoked one at a time, no bulk control
  *   'unknown'    - the page exists; whether it has a bulk revoke has not been checked
  *
+ * `reauth: true` means revoking there demands proof of identity - GitHub sends a
+ * verification email before it will let you kill a session. Worth telling the user before
+ * they click, and a second reason automating this was never realistic: an automated click
+ * cannot pass an email challenge.
+ *
  * Only github.com is marked 'individual', because that is the only one anybody has looked
  * at. Guessing the rest is what produced twelve broken recipes, and the mistake is not
  * worth repeating in a friendlier format.
  *
- * @type {Record<string, { url: string, label: string, revoke: 'individual' | 'unknown' }>}
+ * @type {Record<string, { url: string, label: string, revoke: 'individual' | 'unknown', reauth?: boolean }>}
  */
 export const SESSION_PAGES = {
-  'github.com': { url: 'https://github.com/settings/sessions', label: 'Web sessions', revoke: 'individual' },
+  'github.com': { url: 'https://github.com/settings/sessions', label: 'Web sessions', revoke: 'individual', reauth: true },
   'gitlab.com': { url: 'https://gitlab.com/-/user_settings/active_sessions', label: 'Active sessions', revoke: 'unknown' },
   'google.com': { url: 'https://myaccount.google.com/device-activity', label: 'Your devices', revoke: 'unknown' },
   'youtube.com': { url: 'https://myaccount.google.com/device-activity', label: 'Your devices (Google)', revoke: 'unknown' },

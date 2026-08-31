@@ -58,7 +58,9 @@ export function revokeGuidanceFor(domain, endedHere = false) {
           kind: 'page',
           url: page.url,
           label: page.label,
-          message: 'This browser is signed out properly, not just cleared. Sessions on your other devices are untouched — end those here if you want to.'
+          message:
+            'This browser is signed out properly, not just cleared. Sessions on your other devices are untouched — end those here if you want to.' +
+            (page.reauth ? ' That page will ask you to verify your identity by email first.' : '')
         }
       : {
           kind: 'passwordOnly',
@@ -80,7 +82,8 @@ export function revokeGuidanceFor(domain, endedHere = false) {
       url: page.url,
       label: page.label,
       message:
-        'This site has no "sign out everywhere" button — sessions must be revoked one at a time from the list, or ended all at once by changing your password.',
+        'This site has no "sign out everywhere" button — sessions must be revoked one at a time from the list, or ended all at once by changing your password.' +
+        (page.reauth ? ' Revoking one also requires verifying your identity by email.' : '')
     };
   }
 
