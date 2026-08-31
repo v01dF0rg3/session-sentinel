@@ -266,6 +266,12 @@ function maybePromptCompromise(domain, tier) {
   const advice = compromiseAdviceFor(domain);
   if (!advice) return false;
 
+  // Where there is no direct password link, send the user to the site itself rather than
+  // guessing a settings path. They know their own sites; a confident wrong URL is worse
+  // than an honest starting point.
+  const target = advice.passwordUrl ?? advice.siteUrl;
+  const targetIsDirect = Boolean(advice.passwordUrl);
+
   setStatus('', 'amber');
   el.status.replaceChildren();
 
@@ -290,12 +296,19 @@ function maybePromptCompromise(domain, tier) {
   const compromised = document.createElement('button');
   compromised.className = 'primary small';
   compromised.textContent = 'I think I have been hacked';
-  compromised.title = `Opens ${advice.domain} password settings. Does NOT log you out.`;
+  compromised.title = targetIsDirect
+    ? `Opens ${advice.domain} password settings. Does NOT log you out.`
+    : `Opens ${advice.domain}. Does NOT log you out.`;
   compromised.addEventListener('click', () => {
     // Deliberately does not log out: the user keeps the session they need in order to
     // change the password.
-    chrome.tabs.create({ url: advice.passwordUrl });
-    setStatus(`Opened ${advice.domain} password settings. You have not been logged out — change the password from that page and every other session ends.`, 'amber');
+    chrome.tabs.create({ url: target });
+    setStatus(
+      targetIsDirect
+        ? `Opened ${advice.domain} password settings. You have not been logged out — change the password there and every other session ends.`
+        : `Opened ${advice.domain}. You have not been logged out — change your password in its account settings and every other session ends.`,
+      'amber'
+    );
   });
 
   const justLogout = document.createElement('button');

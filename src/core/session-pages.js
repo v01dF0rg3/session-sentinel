@@ -135,7 +135,8 @@ const DISPLAY_NAMES = {
  * @property {string} title
  * @property {string} explanation Why the extension cannot do this for them.
  * @property {string} advice What actually ends every other session.
- * @property {string} [passwordUrl]
+ * @property {string} [passwordUrl] Direct link, where one is known.
+ * @property {string} siteUrl The site itself - always present, as a starting point.
  * @property {string} [sessionsUrl]
  * @property {string} [sessionsLabel]
  */
@@ -151,30 +152,48 @@ const DISPLAY_NAMES = {
  * So this is offered before the logout runs, not after it - by then the useful option has
  * been thrown away.
  *
- * Returns null when there is nothing actionable to offer, so the caller can just log out.
+ * Advice is offered for EVERY site, because no site can currently have its other sessions
+ * ended by this extension. What degrades is the specificity, never the honesty:
+ *
+ *   known password page   a direct link
+ *   known session page    a link to that, plus generic password advice
+ *   nothing known         the site itself, and where to look once there
+ *
+ * Returns null only for a site whose global revocation is verified to work - nothing
+ * qualifies today, but the check is here so the advice disappears the moment one does.
  *
  * @param {string} domain
+ * @param {boolean} [canRevokeGlobally] A verified global logout exists for this site.
  * @returns {CompromiseAdvice | null}
  */
-export function compromiseAdviceFor(domain) {
-  const page = SESSION_PAGES[domain];
-  if (!page?.password) return null;
+export function compromiseAdviceFor(domain, canRevokeGlobally = false) {
+  if (canRevokeGlobally) return null;
 
+  const page = SESSION_PAGES[domain];
   const pretty = DISPLAY_NAMES[domain] ?? domain;
+
+  const explanation = !page
+    ? `Nothing here can end sessions on your other devices for ${pretty}, and no session list is known for it.`
+    : page.revoke === 'individual'
+      ? `${pretty} has no "sign out everywhere" control - sessions are revoked one at a time` +
+        (page.reauth ? ', and each one needs you to verify your identity by email.' : '.')
+      : `${pretty} offers no way for an extension to end sessions on your other devices.`;
+
+  const advice = page?.password
+    ? 'If you think someone else is using your account, change your password instead. That ends every other session immediately, everywhere - and leaves this window signed in, which logging out would not.'
+    : `If you think someone else is using your account, change your password in ${pretty}'s account settings instead. On almost every site that ends all other sessions at once - and it leaves this window signed in, which logging out would not.`;
 
   return {
     domain,
     title: `${pretty} cannot sign out your other devices`,
-    explanation:
-      page.revoke === 'individual'
-        ? `${pretty} has no "sign out everywhere" control — sessions are revoked one at a time` +
-          (page.reauth ? ', and each one needs you to verify your identity by email.' : '.')
-        : `${pretty} offers no way for an extension to end sessions on your other devices.`,
-    advice:
-      'If you think someone else is using your account, change your password instead. That ends every other session immediately, everywhere — and leaves this window signed in, which logging out would not.',
-    passwordUrl: page.password,
-    sessionsUrl: page.url,
-    sessionsLabel: page.label
+    explanation,
+    advice,
+    passwordUrl: page?.password,
+    // Somewhere to start when there is no direct link. The user knows their own sites;
+    // guessing a settings path would only send them somewhere wrong with confidence.
+    siteUrl: `https://${domain}`,
+    sessionsUrl: page?.url,
+    sessionsLabel: page?.label
   };
 }
 

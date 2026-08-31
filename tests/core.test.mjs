@@ -137,7 +137,8 @@ test('defaults reload open tabs so a logout is visible', () => {
 test('settings carry a version so behaviour changes can be migrated', () => {
   // A changed default never reaches an existing install on its own - the stored value
   // wins - so every behaviour change that matters needs a migration keyed on this.
-  assert.equal(DEFAULT_SETTINGS.version, 3);
+  // Bumping the default without bumping this is how a change silently reaches nobody.
+  assert.ok(DEFAULT_SETTINGS.version >= 4);
 });
 
 test('nothing automatic runs before the user has been onboarded', () => {
@@ -336,16 +337,33 @@ test('sites are named properly, not naively capitalised', () => {
   assert.match(compromiseAdviceFor('paypal.com').title, /^PayPal/);
 });
 
-test('no advice is offered where there is nothing to act on', () => {
-  // Without a known password page there is no action to offer, so the popup should just
-  // log the user out rather than interrupt them with a dead end.
-  assert.equal(compromiseAdviceFor('somerandomblog.net'), null);
+test('every site gets the warning, with honest degradation', () => {
+  // No site can currently have its other sessions ended by this extension, so every site
+  // deserves the same warning. What degrades is the specificity, never the honesty.
+  const known = compromiseAdviceFor('github.com');
+  assert.ok(known.passwordUrl, 'a direct link where one is known');
+
+  const unknown = compromiseAdviceFor('somerandomblog.net');
+  assert.ok(unknown, 'an unknown site still gets the warning');
+  assert.equal(unknown.passwordUrl, undefined, 'no password URL is invented');
+  assert.equal(unknown.siteUrl, 'https://somerandomblog.net', 'the site itself is the fallback');
+  assert.match(unknown.advice, /account settings/);
+  assert.match(unknown.advice, /leaves this window signed in/);
 });
 
-test('the warning defaults to high-risk sites only', () => {
-  // A prompt that fires on every logout is one people learn to click through, which
-  // wastes it exactly when it matters.
-  assert.equal(DEFAULT_SETTINGS.compromisePrompt, 'high');
+test('the warning disappears once a site can actually revoke globally', () => {
+  // Nothing qualifies today. The check exists so the advice stops the moment one does,
+  // rather than nagging about a problem that has been solved.
+  assert.equal(compromiseAdviceFor('github.com', true), null);
+});
+
+test('the warning defaults to every site', () => {
+  // No site can currently have its other sessions ended by this extension, so the warning
+  // applies everywhere. Click-through fatigue is a real cost, but a smaller one than
+  // silently logging someone out of a compromised account without ever mentioning the
+  // action that would have helped.
+  assert.equal(DEFAULT_SETTINGS.compromisePrompt, 'always');
+  assert.equal(DEFAULT_SETTINGS.version, 4, 'needs a migration to reach existing installs');
 });
 
 test('a site with no bulk revoke says so, and names the alternative', () => {

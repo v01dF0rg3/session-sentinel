@@ -39,7 +39,7 @@
 
 /** @type {Settings} */
 export const DEFAULT_SETTINGS = {
-  version: 3,
+  version: 4,
   enabled: true,
 
   // False until the welcome screen has been acknowledged. Automatic triggers are held
@@ -89,11 +89,16 @@ export const DEFAULT_SETTINGS = {
   // which no longer happens anywhere. `tabs.reload` is the same operation as pressing F5.
   tabHandling: /** @type {'none' | 'reload'} */ ('reload'),
 
-  // Before logging out of a high-risk site that cannot end sessions elsewhere, offer the
-  // password-change route instead. Defaulting to high-risk sites rather than all of them:
-  // a prompt that appears every single time is one people learn to click through, which
-  // would waste it exactly when it matters.
-  compromisePrompt: /** @type {'high' | 'always' | 'never'} */ ('high'),
+  // Before logging out of a site that cannot end sessions elsewhere, offer the
+  // password-change route instead. That is currently every site, so this fires on every
+  // per-site logout.
+  //
+  // The obvious objection is click-through fatigue: a prompt people see constantly is one
+  // they learn to dismiss. It is set to 'always' anyway, because the alternative is worse
+  // - silently logging someone out of a compromised account while the attacker's session
+  // continues, having never mentioned the one action that would have stopped it. 'high'
+  // and 'never' are both a single setting away.
+  compromisePrompt: /** @type {'high' | 'always' | 'never'} */ ('always'),
 
   // Off until a bundle host is actually published. A feature that silently fails its
   // weekly check is worse than one honestly switched off, and leaving it on would train

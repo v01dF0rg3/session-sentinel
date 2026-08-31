@@ -87,17 +87,19 @@ export async function ensureInitialized() {
  *
  *   v2  notifications off, while they were a suspect in the browser crash
  *   v3  reload tabs after clearing, now that the crash is understood and fixed
+ *   v4  warn before every per-site logout, not just high-risk ones
  *
  * @returns {Promise<Settings>}
  */
 export async function migrateSettings() {
   const settings = await getSettings();
-  if (settings.version >= 3) return settings;
+  if (settings.version >= 4) return settings;
 
   /** @type {Partial<Settings>} */
-  const patch = { version: 3 };
+  const patch = { version: 4 };
   if (settings.version < 2) patch.notifications = false;
   if (settings.version < 3) patch.tabHandling = 'reload';
+  if (settings.version < 4) patch.compromisePrompt = 'always';
 
   return updateSettings(patch);
 }

@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.18.0 — 31 August 2026
+
+### The warning now covers every site
+
+0.17.0 only warned on the 19 sites with a known password-change URL. Every other site — the
+other ~200 in a real profile — was logged out silently, which is precisely backwards: the
+sites nothing is known about are the ones where the user is least likely to know what their
+options are.
+
+The warning now appears for **every** site, and degrades honestly rather than disappearing:
+
+| What is known | What the user gets |
+|---|---|
+| Password page | A direct link |
+| Session list only | That link, plus generic password advice |
+| Nothing | The site itself, and where to look once there |
+
+No settings path is ever guessed. Sending someone confidently to a URL that does not exist
+is how twelve recipes died; the site root is an honest starting point and the user knows
+their own sites.
+
+It also defaults to **every site** rather than high-risk only. Click-through fatigue is a
+real cost, and the smaller one: the alternative is silently logging someone out of a
+compromised account while the attacker's session continues, having never mentioned the one
+action that would have stopped it. Settings offer high-risk-only or never.
+
+The advice disappears entirely for any site with a verified global logout. Nothing
+qualifies today; the check exists so it stops the moment something does.
+
+### Tests
+
+75.
+
 ## 0.17.0 — 31 August 2026
 
 ### Offer the password route before logging out
