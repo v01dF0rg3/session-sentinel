@@ -1,0 +1,86 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  node:
+    name: decision logic
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # No dependencies to install: the extension is plain ES modules and the tests use
+      # node:test. Nothing to cache, nothing to audit.
+      - name: Run tests
+        run: npm test
+
+  guards:
+    name: repo guards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The signing key is the trust anchor for the recipe update channel: anyone holding
+      # it can serve a bundle every installation accepts. It lives outside the repo, but a
+      # `git add -f` would defeat that silently, so fail the build instead.
+      - name: No key material committed
+        run: |
+          if git ls-files | grep -Ei '(^|/)keys/|\.jwk\.json$|\.pem$|id_rsa'; then
+            echo "::error::Key material is tracked in this repository."
+            exit 1
+          fi
+          if git grep -IlE '"d"[[:space:]]*:[[:space:]]*"[A-Za-z0-9_-]{40,}"|BEGIN [A-Z ]*PRIVATE KEY' -- . ; then
+            echo "::error::A private key appears to be committed."
+            exit 1
+          fi
+          echo "no key material tracked"
+
+      # manifest.json is the one file a broken edit breaks silently: Chrome refuses to
+      # load the extension and says little about why.
+      - name: Manifest is valid and complete
+        run: |
+          node -e "
+            const fs = require('fs');
+            const m = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
+            const missing = [];
+            const check = (p) => { if (!fs.existsSync(p)) missing.push(p); };
+            check(m.background.service_worker);
+            check(m.action.default_popup);
+            check(m.options_page);
+            Object.values(m.icons).forEach(check);
+            if (missing.length) { console.error('manifest references missing files:', missing); process.exit(1); }
+            if (m.manifest_version !== 3) { console.error('not manifest v3'); process.exit(1); }
+            console.log('manifest ok, version', m.version, 'referencing', Object.keys(m.icons).length, 'icons');
+          "
+
+      # Every relative import must resolve, or the service worker dies on load with an
+      # error only visible in chrome://extensions.
+      - name: All imports resolve
+        run: |
+          node --input-type=module -e "
+            import { readdirSync, readFileSync, existsSync } from 'node:fs';
+            import { dirname, join, resolve } from 'node:path';
+            const walk = (d) => readdirSync(d, { withFileTypes: true })
+              .flatMap((e) => e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)]);
+            let broken = 0, total = 0;
+            for (const file of walk('src')) {
+              if (!file.endsWith('.js')) continue;
+              for (const m of readFileSync(file, 'utf8').matchAll(/from '(\.[^']+)'/g)) {
+                total++;
+                if (!existsSync(resolve(dirname(file), m[1]))) {
+                  console.error('broken import', file, '->', m[1]);
+                  broken++;
+                }
+              }
+            }
+            if (broken) process.exit(1);
+            console.log(total, 'relative imports all resolve');
+          "

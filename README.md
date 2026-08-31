@@ -1,5 +1,7 @@
 # Session Sentinel
 
+[![tests](https://github.com/v01dF0rg3/session-sentinel/actions/workflows/test.yml/badge.svg)](https://github.com/v01dF0rg3/session-sentinel/actions/workflows/test.yml)
+
 A Manifest V3 Chrome extension that ends your web sessions — on demand, after inactivity,
 when the screen locks, or when the browser closes.
 
