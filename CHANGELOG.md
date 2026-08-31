@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.16.0 — 31 August 2026
+
+### Google verified, and the whole chain with it
+
+Logging out of youtube.com made the browser's session **disappear from
+myaccount.google.com/device-activity**. That single observation confirms three separate
+mechanisms working together, each of which was a guess until now:
+
+1. **Federated expansion** — youtube.com pulled in google.com, because clearing YouTube
+   alone would have been undone by the live Google session on the next visit.
+2. **Tier-independent explicit logout** — youtube.com is `low` tier and, before 0.15.0,
+   would not have attempted a sign-out at all.
+3. **The sign-out itself** — the session was *ended*, not abandoned. It left the device
+   list rather than accumulating on it.
+
+`google.com` now carries a `verified` date. Two of four recipes are confirmed by
+observation; amazon.com and reddit.com remain unchecked.
+
+### Tests
+
+69.
+
 ## 0.15.0 — 31 August 2026
 
 ### The GitHub recipe is verified — by observation

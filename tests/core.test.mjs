@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 import { registrableDomain } from '../src/core/domain.js';
 import { atLeast, classify, looksLikeSessionCookie } from '../src/core/risk.js';
 import { buildPlan, resolveTier } from '../src/core/plan.js';
+import { expandForIdentity } from '../src/core/identity.js';
 import { DEFAULT_SETTINGS, withDefaults } from '../src/core/policy.js';
 import { findRecipe, heuristicRecipe, isValidRecipe, RECIPES } from '../src/core/recipes.js';
 import { revokeGuidanceFor, sessionPageFor } from '../src/core/session-pages.js';
@@ -188,6 +189,23 @@ test('no bundled recipe claims revoke-everywhere without verification', () => {
       assert.ok(recipe.verified, `${recipe.domain} claims global without verification`);
     }
   }
+});
+
+test('federated expansion is what makes a YouTube logout work at all', () => {
+  // Observed end to end: logging out of youtube.com expanded to google.com, the Google
+  // sign-out ran, and the browser's session disappeared from Google's device-activity
+  // page. Without the expansion the YouTube clear would have been undone on next visit.
+  const known = ['youtube.com', 'google.com'];
+  const { domains } = expandForIdentity(['youtube.com'], known);
+  assert.ok(domains.includes('google.com'));
+
+  const plan = buildPlan(domains, 'manualSite', READY);
+  const byDomain = Object.fromEntries(plan.targets.map((t) => [t.domain, t]));
+
+  // Both must attempt a real sign-out. google.com is critical and always would have;
+  // youtube.com is 'low' and only does so because an explicit click ignores the tier.
+  assert.equal(byDomain['google.com'].serverLogout, true);
+  assert.equal(byDomain['youtube.com'].serverLogout, true);
 });
 
 test('an explicit logout reaches every site, not just high-risk ones', () => {

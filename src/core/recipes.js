@@ -88,6 +88,10 @@ export const RECIPES = [
       { op: 'navigate', url: 'https://accounts.google.com/Logout' },
       { op: 'sleep', ms: 2000 }
     ],
+    // Confirmed by observation: the browser's session disappeared from
+    // myaccount.google.com/device-activity after a run. Reached by logging out of
+    // youtube.com, which expands to google.com because they share a sign-in.
+    verified: '2026-08-31',
     note: 'Ends the browser session properly instead of orphaning it. Google requires per-device confirmation for a true global sign-out.'
   },
   {
