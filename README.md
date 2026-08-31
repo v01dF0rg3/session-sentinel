@@ -117,6 +117,18 @@ So after every run the result says, per site, what would actually end those sess
 No extension can revoke a session on a site that provides no way to do it. Saying which
 sites those are is the next most useful thing.
 
+## If you have been compromised
+
+The popup's **Been hacked?** link opens an ordered walkthrough of every account worth
+securing, grouped by blast radius rather than by risk score. Email and identity providers
+come first — every other account can be reset through them, so anything fixed before those
+can simply be taken again. Then money, then infrastructure, then social.
+
+It links straight to each password page where one is known, notes where one password change
+covers several accounts, and keeps your place across browser restarts. Nothing on that page
+logs you out of anything: if someone else holds a live session, logging yourself out
+surrenders the session you control and leaves theirs running.
+
 ## Sites that share a sign-in
 
 Some sites cannot be logged out on their own. YouTube's session is issued by Google, so

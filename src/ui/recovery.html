@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Session Sentinel — recovery</title>
+    <link rel="stylesheet" href="ui.css" />
+  </head>
+  <body class="options recovery">
+    <header class="welcome-head">
+      <svg class="mark mark-lg" viewBox="0 0 16 16" width="40" height="40" aria-hidden="true" focusable="false">
+        <path d="M5 7.2V5a3 3 0 0 1 6 0v2.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
+        <rect x="2.7" y="7.2" width="10.6" height="7" rx="1.6" fill="currentColor" />
+        <circle cx="8" cy="10.2" r="1.15" fill="var(--bg)" />
+        <path d="M7.4 10.2h1.2l.35 2.1h-1.9z" fill="var(--bg)" />
+      </svg>
+      <div>
+        <h1 style="font-size:22px">Securing your accounts</h1>
+        <p class="muted">Work down this list. It is ordered so that each account you secure stays secured.</p>
+      </div>
+    </header>
+
+    <div class="note">
+      <strong>Change the password — do not just log out.</strong> If someone else is using your
+      accounts, logging yourself out gives up the session you control and leaves theirs
+      running. Changing the password ends every other session at once and keeps you signed
+      in. Nothing on this page logs you out of anything.
+    </div>
+
+    <section class="card">
+      <div class="row" style="padding-top:0">
+        <div class="row-text">
+          <h3 id="progress-headline">Progress</h3>
+          <p id="progress-detail"></p>
+        </div>
+        <div class="row-control">
+          <select id="scope">
+            <option value="critical">critical accounts only</option>
+            <option value="high">critical and high risk</option>
+            <option value="medium">down to medium risk</option>
+            <option value="low">everything I am signed into</option>
+          </select>
+          <button id="reset" class="ghost small" type="button" title="Clear the ticks and start over">Start over</button>
+        </div>
+      </div>
+      <div class="progress-track" aria-hidden="true"><div id="progress-bar" class="progress-fill"></div></div>
+    </section>
+
+    <div id="groups"></div>
+
+    <p class="muted" id="empty" hidden>
+      No accounts at this risk level were found. Widen the scope above, or browse a little
+      and come back — sites are detected from the cookies in this profile.
+    </p>
+
+    <script type="module" src="recovery.js"></script>
+  </body>
+</html>

@@ -22,6 +22,8 @@ import { registrableDomain, hostnameFromUrl } from '../core/domain.js';
 import { getActiveRecipes, getStoredBundle, refreshBundle, resetToBuiltin } from '../platform/recipe-store.js';
 import { clearTrail, readTrail } from '../platform/breadcrumb.js';
 import { clearLog, logEvent, readLog } from '../platform/eventlog.js';
+import { buildRecoveryPlan, recoveryProgress } from '../core/compromise.js';
+import { clearRecoveryState, getRecoveryState, markRecoveryStep, updateRecoveryState } from '../platform/recovery.js';
 
 const RECIPE_ALARM = 'sentinel-recipe-refresh';
 
@@ -214,6 +216,28 @@ async function handleMessage(message) {
     case 'dismissCrashReport':
       await clearTrail();
       return { ok: true };
+
+    case 'getRecovery': {
+      const settings = await getSettings();
+      const state = await getRecoveryState();
+      const minTier = message.minTier ?? state.minTier;
+      const known = likelyLoggedIn(await discoverSessions()).map((s) => s.domain);
+      const groups = buildRecoveryPlan(known, settings, minTier);
+      return { groups, state: { ...state, minTier }, progress: recoveryProgress(groups, state.done) };
+    }
+
+    case 'markRecoveryStep':
+      return markRecoveryStep(message.domain, Boolean(message.done));
+
+    case 'setRecoveryScope':
+      return updateRecoveryState({ minTier: message.minTier });
+
+    case 'resetRecovery':
+      await clearRecoveryState();
+      return { ok: true };
+
+    case 'openRecovery':
+      return chrome.tabs.create({ url: chrome.runtime.getURL('src/ui/recovery.html') });
 
     case 'getEventLog':
       return readLog();

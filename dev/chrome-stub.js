@@ -102,6 +102,8 @@
     crashTrail: crashTrail.value
   });
 
+  const recovery = { done: [], minTier: 'high', startedAt: Date.now() };
+
   const crashTrail = {
     value: {
       step: 'wipe',
@@ -181,6 +183,54 @@
             else delete settings.sites[message.domain];
             return delay(settings, 20);
           }
+
+          case 'getRecovery': {
+            const all = [
+              { domain: 'google.com', tier: 'critical', category: 'identity', passwordUrl: 'https://myaccount.google.com/signinoptions/password', siteUrl: 'https://google.com', sessionsUrl: 'https://myaccount.google.com/device-activity', sessionsLabel: 'Your devices', sharesSignInWith: ['youtube.com'] },
+              { domain: 'aol.com', tier: 'critical', category: 'identity', siteUrl: 'https://aol.com', sharesSignInWith: [] },
+              { domain: 'chase.com', tier: 'critical', category: 'finance', siteUrl: 'https://chase.com', sharesSignInWith: [] },
+              { domain: 'breadpayments.com', tier: 'critical', category: 'finance', siteUrl: 'https://breadpayments.com', sharesSignInWith: [] },
+              { domain: 'github.com', tier: 'critical', category: 'infrastructure', passwordUrl: 'https://github.com/settings/security', siteUrl: 'https://github.com', sessionsUrl: 'https://github.com/settings/sessions', sessionsLabel: 'Web sessions', sharesSignInWith: [] },
+              { domain: 'azure.com', tier: 'critical', category: 'infrastructure', siteUrl: 'https://azure.com', sharesSignInWith: [] },
+              { domain: 'discord.com', tier: 'critical', category: 'communication', siteUrl: 'https://discord.com', sessionsUrl: 'https://discord.com/channels/@me', sessionsLabel: 'Settings, Devices', sharesSignInWith: [] },
+              { domain: 'linkedin.com', tier: 'high', category: 'communication', passwordUrl: 'https://www.linkedin.com/psettings/change-password', siteUrl: 'https://linkedin.com', sharesSignInWith: [] }
+            ];
+            const labels = { identity: 'Email and identity', finance: 'Money', infrastructure: 'Infrastructure and code', communication: 'Communication and social' };
+            const whys = {
+              identity: 'Secure these first. Every other account can be reset through them, so anything you fix before these can simply be taken again.',
+              finance: 'Direct loss. Stored cards, transfers, and anything that can move money.',
+              infrastructure: 'Lasting damage. Code, deployments, domains and cloud accounts can be altered in ways that outlive the breach.',
+              communication: 'Impersonation, and a reset vector of their own for anything tied to these accounts.'
+            };
+            const groups = ['identity','finance','infrastructure','communication'].map((c) => ({
+              category: c, label: labels[c], why: whys[c], steps: all.filter((s) => s.category === c)
+            }));
+            const flat = groups.flatMap((g) => g.steps.map((s) => s.domain));
+            return delay({
+              groups,
+              state: { ...recovery },
+              progress: {
+                done: flat.filter((d) => recovery.done.includes(d)).length,
+                total: flat.length,
+                nextDomain: flat.find((d) => !recovery.done.includes(d)) ?? null
+              }
+            }, 40);
+          }
+
+          case 'markRecoveryStep': {
+            const set = new Set(recovery.done);
+            if (message.done) set.add(message.domain); else set.delete(message.domain);
+            recovery.done = [...set];
+            return delay({ ...recovery }, 20);
+          }
+
+          case 'setRecoveryScope':
+            recovery.minTier = message.minTier;
+            return delay({ ...recovery }, 20);
+
+          case 'resetRecovery':
+            recovery.done = [];
+            return delay({ ok: true }, 20);
 
           case 'getEventLog':
             return delay([

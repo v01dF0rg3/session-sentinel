@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.19.0 — 31 August 2026
+
+### Compromise recovery
+
+The per-site warning answers "what do I do about this account". This answers the question
+someone actually has on a bad day: *my email was breached — what else is exposed, and in
+what order do I fix it?*
+
+**Been hacked?** in the popup opens an ordered walkthrough of every account worth securing,
+grouped by blast radius rather than by risk score. That distinction is the whole feature.
+Risk tier says how bad losing an account is; recovery order says which account, secured
+second, was used to retake the first. Email and identity providers come first regardless of
+tier — securing a bank before the mailbox that receives its password-reset link is wasted
+work, because the attacker just resets it again. Then money, then infrastructure, then
+social.
+
+- Links straight to the password page where one is known, the site itself where not. No
+  settings path is ever guessed.
+- Notes where one password change covers several accounts, so nobody hunts for a password
+  page that does not exist — a Google change covers YouTube.
+- Keeps your place in `chrome.storage.local`. Fourteen accounts takes long enough that the
+  browser will be closed or crash partway, and a recovery abandoned halfway leaves the tail
+  end permanently unsecured.
+- Scope is adjustable from critical-only to everything you are signed into. Defaults to
+  critical and high: a breach response listing two hundred forums is one nobody finishes.
+- The never-clear list is deliberately ignored here. It governs what may be *destroyed*;
+  this destroys nothing. A compromised account you asked not to log out of is still
+  compromised.
+
+Nothing on the page logs anyone out, and it says so at the top.
+
+### Changed
+
+- The welcome page now explains that clearing a site does not always end its session — that
+  it can abandon one instead. It is central to how the extension behaves and it was missing
+  from the first thing a new user reads.
+
+### Tests
+
+85.
+
 ## 0.18.0 — 31 August 2026
 
 ### The warning now covers every site

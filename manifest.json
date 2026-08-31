@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Session Sentinel",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "description": "Ends your web sessions on demand, on idle, on screen lock, or when the browser closes.",
   "minimum_chrome_version": "116",
   "permissions": [

@@ -26,6 +26,7 @@ const el = {
   toggleEnabled: /** @type {HTMLButtonElement} */ (document.getElementById('toggle-enabled')),
   enabledLabel: /** @type {HTMLElement} */ (document.getElementById('enabled-label')),
   openOptions: /** @type {HTMLButtonElement} */ (document.getElementById('open-options')),
+  openRecovery: /** @type {HTMLButtonElement} */ (document.getElementById('open-recovery')),
   filter: /** @type {HTMLInputElement} */ (document.getElementById('site-filter')),
   crashReport: /** @type {HTMLElement} */ (document.getElementById('crash-report')),
   crashDetail: /** @type {HTMLElement} */ (document.getElementById('crash-detail')),
@@ -318,7 +319,16 @@ function maybePromptCompromise(domain, tier) {
     act(`Signing out of ${domain}...`, { type: 'runSite', domain })
   );
 
-  actions.append(compromised, justLogout);
+  // A breach is rarely one account. Offer the full ordered walkthrough alongside the
+  // single-site action, since securing this one alone usually is not enough.
+  const allAccounts = document.createElement('button');
+  allAccounts.className = 'ghost small';
+  allAccounts.textContent = 'Secure all my accounts';
+  allAccounts.addEventListener('click', () => {
+    window.open(chrome.runtime.getURL('src/ui/recovery.html'), '_blank');
+  });
+
+  actions.append(compromised, allAccounts, justLogout);
   el.status.append(title, explanation, adviceText, actions);
 
   if (advice.sessionsUrl) {
@@ -438,6 +448,10 @@ el.filter.addEventListener('input', () => {
 el.crashDismiss.addEventListener('click', async () => {
   await send({ type: 'dismissCrashReport' });
   el.crashReport.hidden = true;
+});
+
+el.openRecovery.addEventListener('click', () => {
+  window.open(chrome.runtime.getURL('src/ui/recovery.html'), '_blank');
 });
 
 el.openOptions.addEventListener('click', () => chrome.runtime.openOptionsPage());
