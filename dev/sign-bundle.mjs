@@ -4,18 +4,29 @@
  *   node dev/sign-bundle.mjs keygen
  *   node dev/sign-bundle.mjs sign <payload.json> <out.json>
  *
- * The private key lives in dev/keys/ and is gitignored. Losing it means minting a new
- * key and shipping an extension update to change the pinned one, so back it up somewhere
- * that is not this repository.
+ * The private key lives outside the repository, under ~/.session-sentinel/keys by
+ * default. Losing it means minting a new key and shipping an extension update to change
+ * the pinned one, so back it up somewhere that is neither this repository nor this disk.
  */
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const KEY_DIR = join(HERE, 'keys');
+/**
+ * Keys live OUTSIDE the repository, not merely gitignored inside it.
+ *
+ * A .gitignore entry is one `git add -f`, one careless edit, or one `git clean` away from
+ * failing, and this repository is public. The key that signs recipe bundles is the whole
+ * trust anchor of the update channel: anyone holding it can serve a signed bundle that
+ * every installation will accept. Distance from the repo is worth more than a rule inside
+ * it.
+ *
+ * Override with SENTINEL_KEY_DIR to point somewhere else entirely - a removable drive, or
+ * a password manager's file store.
+ */
+const KEY_DIR = process.env.SENTINEL_KEY_DIR ?? join(homedir(), '.session-sentinel', 'keys');
 const PRIVATE_KEY_PATH = join(KEY_DIR, 'private.jwk.json');
 const PUBLIC_KEY_PATH = join(KEY_DIR, 'public.spki.txt');
 

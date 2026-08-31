@@ -203,6 +203,13 @@ Regenerates all four sizes from [dev/make-icons.mjs](dev/make-icons.mjs), a depe
 PNG encoder. The artwork is defined in normalised coordinates so every size matches, and
 the 16px favicon is hinted separately for legibility.
 
+## Signing keys
+
+The recipe bundle signing key lives **outside this repository**, at
+`~/.session-sentinel/keys` by default (override with `SENTINEL_KEY_DIR`). A `.gitignore`
+entry is one `git add -f` away from failing and this repo is public; the key is the trust
+anchor for the whole update channel, so distance beats a rule.
+
 ## Documentation
 
 | | |

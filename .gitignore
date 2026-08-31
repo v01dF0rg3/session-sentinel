@@ -1,4 +1,8 @@
 node_modules/
+# Signing keys now live outside the repo (see dev/sign-bundle.mjs). This entry stays as a
+# second line of defence in case one is ever created here by mistake.
 dev/keys/
+keys/
+*.jwk.json
 dev/*-preview.html
 *.zip

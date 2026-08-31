@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.13.2 — 30 August 2026
+
+### Changed
+
+- **Signing keys moved out of the repository** to `~/.session-sentinel/keys`
+  (`SENTINEL_KEY_DIR` overrides). They were gitignored and verified excluded from every
+  commit, but the repository is public now and a `.gitignore` entry is one `git add -f`
+  away from failing. The key is the trust anchor for the entire update channel — anyone
+  holding it can serve a bundle every installation will accept — so distance from the repo
+  is worth more than a rule inside it.
+- MIT licence added. Without one the code was legally all-rights-reserved and unusable by
+  anyone else.
+
 ## 0.13.1 — 30 August 2026
 
 ### Added
