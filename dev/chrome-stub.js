@@ -232,6 +232,36 @@
             recovery.done = [];
             return delay({ ok: true }, 20);
 
+          case 'getCoverage': {
+            const entries = [
+              { domain: 'github.com', outcome: 'loggedOut', method: 'recipe', attempted: true, at: Date.now()-8e6, runs: 3 },
+              { domain: 'google.com', outcome: 'loggedOut', method: 'recipe', attempted: true, at: Date.now()-7e6, runs: 2 },
+              { domain: 'vast.ai', outcome: 'loggedOut', method: 'home', attempted: true, at: Date.now()-6e6, runs: 1 },
+              { domain: 'proton.me', outcome: 'loggedOut', method: 'path', attempted: true, at: Date.now()-5e6, runs: 1 },
+              { domain: 'linear.app', outcome: 'loggedOut', method: 'path', attempted: true, at: Date.now()-4e6, runs: 1 },
+              { domain: 'chase.com', outcome: 'cleared', method: 'none', attempted: true, at: Date.now()-3e6, runs: 2 },
+              { domain: 'breadpayments.com', outcome: 'cleared', method: 'none', attempted: true, at: Date.now()-2e6, runs: 1 },
+              { domain: 'somerandomblog.net', outcome: 'cleared', method: 'none', attempted: false, at: Date.now()-1e6, runs: 1 }
+            ];
+            const byMethod = {};
+            let attempted=0, ended=0, cleared=0;
+            const needs=[];
+            for (const e of entries) {
+              if (!e.attempted) continue;
+              attempted++;
+              byMethod[e.method] = (byMethod[e.method]??0)+1;
+              if (e.outcome==='loggedOut'||e.outcome==='revoked') ended++; else { cleared++; needs.push(e); }
+            }
+            return delay({ entries, summary: {
+              total: entries.length, attempted, endedSession: ended, clearedOnly: cleared, failed: 0,
+              hitRate: Math.round((ended/attempted)*100), byMethod,
+              needsRecipe: needs.sort((a,b)=>b.at-a.at)
+            }}, 30);
+          }
+
+          case 'clearCoverage':
+            return delay({ ok: true }, 20);
+
           case 'getEventLog':
             return delay([
               { t: Date.now() - 9000, type: 'run:start', detail: 'manualSite' },

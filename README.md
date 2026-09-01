@@ -91,6 +91,15 @@ Open tabs on a cleared site are reloaded automatically, so the signed-out state 
 straight away. Turn that off in Settings → Your open tabs if you would rather refresh pages
 yourself.
 
+## Coverage
+
+Settings → **Check it works** → **Coverage** reports how often the extension reaches a
+site's real sign-out rather than only deleting cookies. It counts results as you use it and
+names the sites where nothing worked — those are the ones worth a recipe, chosen by
+evidence rather than intuition.
+
+Only sites where a server-side logout was actually attempted count towards the rate.
+
 ## Checking it works
 
 Settings → **Check it works** → **Run diagnostics**. Fourteen checks that run the real code

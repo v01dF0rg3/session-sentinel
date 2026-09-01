@@ -36,6 +36,24 @@
     <p class="muted" id="env" style="margin-top:16px"></p>
 
     <section class="card" style="margin-top:22px">
+      <h2 style="margin-bottom:6px">Coverage</h2>
+      <p class="muted" style="margin-bottom:10px">
+        How often the extension reaches a site's real sign-out, rather than only deleting
+        cookies and leaving the session running. Four sites have a hand-written recipe;
+        every other site relies on a generic fallback that has never been measured. This
+        counts results as you use it, so the sites worth a recipe are chosen by evidence.
+      </p>
+      <p id="coverage-headline" style="font-weight:650;margin-bottom:8px"></p>
+      <div id="coverage-methods" class="muted" style="margin-bottom:12px"></div>
+      <div id="coverage-gaps"></div>
+      <div class="welcome-actions" style="margin-top:12px">
+        <button id="coverage-refresh" class="ghost small" type="button">Refresh</button>
+        <button id="coverage-copy" class="ghost small" type="button">Copy list</button>
+        <button id="coverage-clear" class="ghost small" type="button">Reset counts</button>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:22px">
       <h2 style="margin-bottom:6px">Activity log</h2>
       <p class="muted" style="margin-bottom:10px">
         Every step of every run, kept across browser restarts. If Chrome closes during a

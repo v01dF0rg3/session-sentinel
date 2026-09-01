@@ -21,6 +21,10 @@ import { DEPTH_DATA_TYPES } from '../core/policy.js';
 import { pageStep } from '../engine/step-runner.js';
 import { registrableDomain } from '../core/domain.js';
 import { formatLog } from '../platform/eventlog.js';
+import { METHOD_LABELS, describeCoverage } from '../core/coverage.js';
+
+/** Newline, named so the escape survives every layer of tooling between here and disk. */
+const BREAK = String.fromCharCode(10);
 
 /** Reserved TLD: guaranteed never to resolve, so clearing its data is a true no-op. */
 const TEST_DOMAIN = 'session-sentinel-selftest.invalid';
@@ -294,8 +298,76 @@ document.getElementById('log-clear')?.addEventListener('click', async () => {
   await loadLog();
 });
 
+/**
+ * Coverage: the number that decides where recipes are worth writing.
+ *
+ * Only attempted sites count towards the rate. A site below the tier threshold was never
+ * tried, and counting it as a miss would blame the fallback for a decision the planner
+ * made — which would make the number worse than useless.
+ */
+async function loadCoverage() {
+  const { summary } = await chrome.runtime.sendMessage({ type: 'getCoverage' });
+  const headline = document.getElementById('coverage-headline');
+  const methods = document.getElementById('coverage-methods');
+  const gaps = document.getElementById('coverage-gaps');
+  if (!headline || !methods || !gaps) return;
+
+  const described = describeCoverage(summary);
+  headline.textContent = described ?? 'Nothing measured yet — log out of a few sites and come back.';
+  headline.style.color =
+    summary.hitRate === null ? 'var(--text-muted)' : summary.hitRate >= 60 ? 'var(--green)' : 'var(--amber)';
+
+  methods.replaceChildren();
+  for (const [method, count] of Object.entries(summary.byMethod).sort((a, b) => b[1] - a[1])) {
+    const line = document.createElement('div');
+    line.textContent = `${count} × ${METHOD_LABELS[method] ?? method}`;
+    methods.append(line);
+  }
+
+  gaps.replaceChildren();
+  if (summary.needsRecipe.length) {
+    const title = document.createElement('strong');
+    title.textContent = `${summary.needsRecipe.length} site(s) where nothing worked — these are the ones worth a recipe:`;
+    title.style.display = 'block';
+    title.style.marginBottom = '4px';
+    gaps.append(title);
+
+    const list = document.createElement('div');
+    list.className = 'log';
+    list.style.maxHeight = '160px';
+    list.textContent = summary.needsRecipe
+      .map((e) => `${e.domain}  (${e.runs} run${e.runs === 1 ? '' : 's'}, last ${new Date(e.at).toLocaleDateString()})`)
+      .join(BREAK);
+    gaps.append(list);
+  }
+}
+
+document.getElementById('coverage-refresh')?.addEventListener('click', loadCoverage);
+
+document.getElementById('coverage-copy')?.addEventListener('click', async () => {
+  const { summary } = await chrome.runtime.sendMessage({ type: 'getCoverage' });
+  const text = [
+    describeCoverage(summary) ?? 'nothing measured yet',
+    '',
+    ...Object.entries(summary.byMethod).map(([m, n]) => `${n} x ${METHOD_LABELS[m] ?? m}`),
+    '',
+    'nothing worked on:',
+    ...summary.needsRecipe.map((e) => `  ${e.domain}`)
+  ].join(BREAK);
+  await navigator.clipboard.writeText(text);
+  const button = /** @type {HTMLButtonElement} */ (document.getElementById('coverage-copy'));
+  button.textContent = 'Copied';
+  setTimeout(() => { button.textContent = 'Copy list'; }, 1500);
+});
+
+document.getElementById('coverage-clear')?.addEventListener('click', async () => {
+  await chrome.runtime.sendMessage({ type: 'clearCoverage' });
+  await loadCoverage();
+});
+
 el.run.addEventListener('click', run);
 loadLog();
+loadCoverage();
 
 el.copy.addEventListener('click', async () => {
   const lines = [

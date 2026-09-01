@@ -25,6 +25,8 @@ import { clearLog, logEvent, readLog } from '../platform/eventlog.js';
 import { buildRecoveryPlan, recoveryProgress } from '../core/compromise.js';
 import { clearRecoveryState, getRecoveryState, markRecoveryStep, updateRecoveryState } from '../platform/recovery.js';
 import { dropFrequencyPermission, getFrequentDomains, hasFrequencyPermission } from '../platform/frequency.js';
+import { clearCoverage, readCoverage } from '../platform/coverage.js';
+import { summariseCoverage } from '../core/coverage.js';
 
 const RECIPE_ALARM = 'sentinel-recipe-refresh';
 
@@ -247,6 +249,15 @@ async function handleMessage(message) {
 
     case 'openRecovery':
       return chrome.tabs.create({ url: chrome.runtime.getURL('src/ui/recovery.html') });
+
+    case 'getCoverage': {
+      const entries = await readCoverage();
+      return { entries, summary: summariseCoverage(entries) };
+    }
+
+    case 'clearCoverage':
+      await clearCoverage();
+      return { ok: true };
 
     case 'getEventLog':
       return readLog();

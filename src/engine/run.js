@@ -25,6 +25,7 @@ import { summarize } from './report.js';
 import { getSettings, updateState } from '../platform/settings.js';
 import { clearTrail, mark as breadcrumb } from '../platform/breadcrumb.js';
 import { logEvent } from '../platform/eventlog.js';
+import { recordOutcome } from '../platform/coverage.js';
 
 /**
  * Record a step both as a breadcrumb (cleared on success, drives the popup banner) and in
@@ -205,6 +206,11 @@ export async function runLogout(trigger, domains = null) {
           (target.serverLogout ? attempt.detail : `local data cleared (${target.depth})`) +
           sharedNote + orphanNote + partial + keptNote + openTabsNote;
       }
+
+      // Count what actually worked. Four recipes cover 218 sites; whether the generic
+      // fallback carries the rest has never been measured, and without a number the
+      // choice of which site to write a recipe for is guesswork.
+      await recordOutcome(target.domain, result.outcome, attempt.method ?? 'none', target.serverLogout);
 
       sites.push(result);
     }

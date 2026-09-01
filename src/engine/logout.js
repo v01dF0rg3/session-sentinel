@@ -17,9 +17,15 @@ import { pageStep } from './step-runner.js';
 import { closeTab, navigateTab, openTab, sleep } from '../platform/tabs.js';
 
 /**
+ * @typedef {'recipe' | 'oidc' | 'path' | 'home' | 'none'} LogoutMethod
+ */
+
+/**
  * @typedef {object} LogoutAttempt
  * @property {'revoked' | 'loggedOut' | 'none'} result
  * @property {string} detail
+ * @property {LogoutMethod} [method] Which tier actually did the work. Recorded rather than
+ *   inferred from `detail`, so coverage can be counted instead of guessed at.
  */
 
 /**
@@ -286,14 +292,14 @@ export async function attemptServerLogout(domain, windowId, timeoutMs) {
   const recipe = await findActiveRecipe(domain);
   if (recipe) {
     const attempt = await runRecipe(recipe, windowId, remaining());
-    if (attempt.result !== 'none') return attempt;
+    if (attempt.result !== 'none') return { ...attempt, method: 'recipe' };
   }
 
   if (remaining() > 4000) {
     const endpoint = await discoverOidcLogout(domain);
     if (endpoint) {
       const attempt = await runOidcLogout(endpoint, domain, windowId, remaining());
-      if (attempt.result !== 'none') return attempt;
+      if (attempt.result !== 'none') return { ...attempt, method: 'oidc' };
     }
   }
 
@@ -307,17 +313,18 @@ export async function attemptServerLogout(domain, windowId, timeoutMs) {
 
     if (confirmed && remaining() > 5000) {
       const attempt = await runRecipe(heuristicRecipe(`https://${domain}`, 'path', confirmed), windowId, remaining());
-      if (attempt.result !== 'none') return attempt;
+      if (attempt.result !== 'none') return { ...attempt, method: 'path' };
     }
 
     if (remaining() > 5000) {
       const attempt = await runRecipe(heuristicRecipe(`https://${domain}`, 'home'), windowId, remaining());
-      if (attempt.result !== 'none') return attempt;
+      if (attempt.result !== 'none') return { ...attempt, method: 'home' };
     }
   }
 
   return {
     result: 'none',
+    method: 'none',
     detail: 'could not find a sign-out on this site, so its session was cleared here but not ended'
   };
 }

@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.21.0 — 31 August 2026
+
+### Coverage measurement
+
+Four sites have a hand-written recipe. The other two hundred rely on a generic fallback
+that probes for a logout URL and, failing that, hunts the homepage for a sign-out link.
+Whether that works on most sites or almost none had never been measured — and without a
+number, choosing which site to write a recipe for is intuition, which is precisely how
+twelve recipes came to be written for pages nobody had looked at.
+
+The extension now counts its own results. Diagnostics reports the hit rate, which tier did
+the work, and names the sites where nothing worked:
+
+> 5 of 7 sites had their session actually ended (71%).
+> 2 × built-in recipe · 2 × logout URL found by probing · 1 × sign-out link on the homepage
+> **2 sites where nothing worked — these are the ones worth a recipe:** chase.com,
+> breadpayments.com
+
+Ordinary use becomes the evidence, and the next recipes get chosen by data rather than by
+guessing.
+
+Two things the number is careful about, both pinned by tests:
+
+- **Only attempted sites count.** A site below the tier threshold was never tried, so
+  counting it as a miss would blame the fallback for a decision the planner made.
+- **Failures are counted apart from misses.** "The wipe itself failed" is a different
+  problem from "no sign-out was found", and folding them together hides one behind
+  the other.
+
+Which tier did the work is now recorded structurally rather than parsed back out of a
+description string.
+
+The tally stores a domain, an outcome, and a method. No URLs, no visit times, nothing about
+what was done on the site — it is a record of the extension's own behaviour.
+
+### Tests
+
+94.
+
 ## 0.20.0 — 31 August 2026
 
 All four items below came from testing on a real profile.
