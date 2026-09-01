@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import { buildRecoveryPlan, countSteps, recoveryCategory, recoveryProgress } from '../src/core/compromise.js';
 import { DEFAULT_SETTINGS, withDefaults } from '../src/core/policy.js';
 
-const plan = (domains, minTier) => buildRecoveryPlan(domains, DEFAULT_SETTINGS, minTier);
+const plan = (domains, minTier, frequent) => buildRecoveryPlan(domains, DEFAULT_SETTINGS, minTier, frequent);
 
 test('sites are sorted into recovery categories', () => {
   assert.equal(recoveryCategory('gmail.com'), 'identity');
@@ -103,6 +103,39 @@ test('progress tracks position and names what is next', () => {
   const finished = recoveryProgress(groups, all);
   assert.equal(finished.done, 3);
   assert.equal(finished.nextDomain, null);
+});
+
+test('frequency breaks ties but never outranks sensitivity', () => {
+  // The distinction that keeps this honest. A site visited daily is not more dangerous to
+  // lose than one visited twice a year, so frequency must never promote a lower tier past
+  // a higher one. Within a tier it is a good signal: secure the account you live in first.
+  const frequent = new Set(['github.com']);
+
+  // Same category, same tier: the frequently-used one comes first.
+  const tied = plan(['github.com', 'gitlab.com'], 'high', frequent);
+  assert.deepEqual(tied[0].steps.map((s) => s.domain), ['github.com', 'gitlab.com']);
+
+  // Without the signal it falls back to alphabetical, which puts them the other way.
+  const untied = plan(['github.com', 'gitlab.com'], 'high');
+  assert.deepEqual(untied[0].steps.map((s) => s.domain), ['github.com', 'gitlab.com']);
+
+  // Across tiers, sensitivity still wins. github.com is frequently used and demoted to
+  // 'high'; gitlab.com is untouched at 'critical'. The critical one must still come first.
+  const settings = withDefaults({ sites: { 'github.com': { tier: 'high', mode: 'default' } } });
+  const acrossTiers = buildRecoveryPlan(['github.com', 'gitlab.com'], settings, 'high', frequent);
+  assert.deepEqual(
+    acrossTiers[0].steps.map((s) => s.domain),
+    ['gitlab.com', 'github.com'],
+    'critical outranks frequent'
+  );
+});
+
+test('steps say whether the user visits the site often', () => {
+  const groups = plan(['github.com'], 'high', new Set(['github.com']));
+  assert.equal(groups[0].steps[0].frequent, true);
+
+  const without = plan(['github.com'], 'high');
+  assert.equal(without[0].steps[0].frequent, false, 'defaults to false with no permission');
 });
 
 test('each group explains why it is where it is', () => {

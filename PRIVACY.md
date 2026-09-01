@@ -1,6 +1,6 @@
 # Privacy Policy — Session Sentinel
 
-Last updated: 30 August 2026. Applies to version 0.4.0.
+Last updated: 31 August 2026. Applies to version 0.20.0.
 
 ## The short version
 
@@ -72,6 +72,23 @@ When enabled, once a week it makes a single request for the entire recipe list:
 
 Turning the setting off stops all network activity of this kind, including the scheduled
 check.
+
+## Most-visited sites (optional, off by default)
+
+Session Sentinel can order equally-sensitive accounts by how often you use them, so a
+breach recovery starts with the accounts you actually live in. **This is off unless you
+turn it on**, and turning it on asks Chrome for a separate permission you can refuse or
+revoke at any time.
+
+- It uses `chrome.topSites` — the short list of sites Chrome puts on your new-tab page —
+  not your browsing history. No page URLs, no timestamps, no visit counts.
+- The list is read on the machine, used to sort a list, and never stored or transmitted.
+- It **never changes how risky a site is considered**. A news site read daily is not more
+  dangerous to lose than a bank visited twice a year, and treating it as such would get the
+  ordering exactly backwards. It only breaks ties between accounts already judged equally
+  sensitive.
+
+Switching it off removes the permission.
 
 ## Your control
 

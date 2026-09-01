@@ -142,9 +142,10 @@ export function findRecipe(domain) {
  *
  * @param {string} origin
  * @param {'path' | 'home'} mode
+ * @param {string} [logoutUrl] A logout URL already confirmed to exist.
  * @returns {Recipe}
  */
-export function heuristicRecipe(origin, mode = 'home') {
+export function heuristicRecipe(origin, mode = 'home', logoutUrl) {
   const CONFIRM = 'sign out|log out|logout|log off|sign me out|yes|confirm';
 
   if (mode === 'path') {
@@ -152,7 +153,7 @@ export function heuristicRecipe(origin, mode = 'home') {
       domain: origin,
       capability: 'local',
       steps: [
-        { op: 'navigate', url: `${origin}/logout` },
+        { op: 'navigate', url: logoutUrl ?? `${origin}/logout` },
         // Submit buttons first: a form submit is what carries the CSRF token.
         { op: 'clickText', selector: 'button[type="submit"], input[type="submit"]', text: CONFIRM, optional: true },
         { op: 'clickText', selector: 'button, a[href*="logout"], [role="button"]', text: CONFIRM, optional: true },

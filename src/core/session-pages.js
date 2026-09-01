@@ -126,7 +126,9 @@ const DISPLAY_NAMES = {
   'paypal.com': 'PayPal',
   'zoom.us': 'Zoom',
   'slack.com': 'Slack',
-  'discord.com': 'Discord'
+  'discord.com': 'Discord',
+  'proton.me': 'Proton',
+  'protonmail.com': 'Proton'
 };
 
 /**

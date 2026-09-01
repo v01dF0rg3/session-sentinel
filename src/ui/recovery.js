@@ -114,6 +114,14 @@ function renderStep(step, isDone, isNext) {
   badge.style.marginLeft = '8px';
   name.append(badge);
 
+  if (step.frequent) {
+    const often = document.createElement('span');
+    often.className = 'badge frequent';
+    often.textContent = 'you use this often';
+    often.style.marginLeft = '6px';
+    name.append(often);
+  }
+
   text.append(name);
 
   // A shared sign-in means one password change covers several accounts. Saying so stops

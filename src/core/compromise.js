@@ -31,6 +31,7 @@ import { siblingsOf } from './identity.js';
  * @property {string} [sessionsUrl]
  * @property {string} [sessionsLabel]
  * @property {string[]} sharesSignInWith Accounts secured by the same password.
+ * @property {boolean} frequent The user visits this site often.
  */
 
 /**
@@ -73,9 +74,10 @@ export function recoveryCategory(domain) {
  * @param {string[]} domains Sites the user is signed into.
  * @param {import('./policy.js').Settings} settings
  * @param {RiskTier} [minTier]
+ * @param {Set<string>} [frequent] Domains the user visits often, if known.
  * @returns {RecoveryGroup[]}
  */
-export function buildRecoveryPlan(domains, settings, minTier = 'high') {
+export function buildRecoveryPlan(domains, settings, minTier = 'high', frequent = new Set()) {
   /** @type {Map<RecoveryCategory, RecoveryStep[]>} */
   const byCategory = new Map();
   const included = new Set(domains);
@@ -98,7 +100,8 @@ export function buildRecoveryPlan(domains, settings, minTier = 'high') {
       sessionsLabel: advice?.sessionsLabel,
       // A shared sign-in means one password change covers several accounts - worth
       // saying, so the user does not hunt for a password page that does not exist.
-      sharesSignInWith: siblingsOf(domain).filter((d) => included.has(d))
+      sharesSignInWith: siblingsOf(domain).filter((d) => included.has(d)),
+      frequent: frequent.has(domain)
     };
 
     const list = byCategory.get(category) ?? [];
@@ -114,8 +117,14 @@ export function buildRecoveryPlan(domains, settings, minTier = 'high') {
       category,
       label: CATEGORY_LABELS[category],
       why: CATEGORY_WHY[category],
+      // Tier first, because that is a security judgement. Frequency only breaks ties:
+      // given two equally critical accounts, the one the user actually lives in is the
+      // one to secure first. It never promotes a site past a more sensitive one.
       steps: steps.sort(
-        (a, b) => tierOrder[a.tier] - tierOrder[b.tier] || a.domain.localeCompare(b.domain)
+        (a, b) =>
+          tierOrder[a.tier] - tierOrder[b.tier] ||
+          Number(b.frequent) - Number(a.frequent) ||
+          a.domain.localeCompare(b.domain)
       )
     }));
 }

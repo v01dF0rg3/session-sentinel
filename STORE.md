@@ -25,6 +25,12 @@ The store asks for these one at a time. Each answer states the concrete feature.
 | `notifications` | Shows the result of an automatic logout, so the user knows what was revoked, what was only cleared locally, and what failed. |
 | `host_permissions: <all_urls>` | The extension cannot know in advance which sites the user is signed into — finding and clearing them is its entire purpose. Access is used only to delete session data and to operate sites' own logout controls. Page content is never read or transmitted. |
 
+### Optional permissions
+
+| Permission | Justification |
+|---|---|
+| `topSites` | Optional and off by default. Orders equally-sensitive accounts in the breach-recovery checklist by how often the user visits them, so the accounts they actually use come first. Read on the device, used to sort a list, never stored or transmitted. Never affects how risky a site is considered. |
+
 ## Remote code
 
 None. All logic ships in the package. Logout recipes are inert JSON-shaped data

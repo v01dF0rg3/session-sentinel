@@ -24,6 +24,7 @@ import { clearTrail, readTrail } from '../platform/breadcrumb.js';
 import { clearLog, logEvent, readLog } from '../platform/eventlog.js';
 import { buildRecoveryPlan, recoveryProgress } from '../core/compromise.js';
 import { clearRecoveryState, getRecoveryState, markRecoveryStep, updateRecoveryState } from '../platform/recovery.js';
+import { dropFrequencyPermission, getFrequentDomains, hasFrequencyPermission } from '../platform/frequency.js';
 
 const RECIPE_ALARM = 'sentinel-recipe-refresh';
 
@@ -222,7 +223,8 @@ async function handleMessage(message) {
       const state = await getRecoveryState();
       const minTier = message.minTier ?? state.minTier;
       const known = likelyLoggedIn(await discoverSessions()).map((s) => s.domain);
-      const groups = buildRecoveryPlan(known, settings, minTier);
+      const frequent = settings.useVisitFrequency ? await getFrequentDomains() : new Set();
+      const groups = buildRecoveryPlan(known, settings, minTier, frequent);
       return { groups, state: { ...state, minTier }, progress: recoveryProgress(groups, state.done) };
     }
 
@@ -235,6 +237,13 @@ async function handleMessage(message) {
     case 'resetRecovery':
       await clearRecoveryState();
       return { ok: true };
+
+    case 'frequencyStatus':
+      return { granted: await hasFrequencyPermission() };
+
+    case 'dropFrequency':
+      await dropFrequencyPermission();
+      return updateSettings({ useVisitFrequency: false });
 
     case 'openRecovery':
       return chrome.tabs.create({ url: chrome.runtime.getURL('src/ui/recovery.html') });

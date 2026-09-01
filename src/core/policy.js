@@ -34,12 +34,14 @@
  * @property {'none' | 'reload'} tabHandling What to do with your open tabs on a cleared site.
  * @property {'high' | 'always' | 'never'} compromisePrompt When to offer the password-change
  *   route before logging out of a site that cannot revoke sessions elsewhere.
+ * @property {boolean} useVisitFrequency Order equally-risky accounts by how often they are
+ *   used. Requires the optional topSites permission.
  * @property {{ enabled: boolean, url: string, lastCheck: number, lastVersion: number, lastError: string }} recipeUpdates
  */
 
 /** @type {Settings} */
 export const DEFAULT_SETTINGS = {
-  version: 4,
+  version: 5,
   enabled: true,
 
   // False until the welcome screen has been acknowledged. Automatic triggers are held
@@ -90,15 +92,20 @@ export const DEFAULT_SETTINGS = {
   tabHandling: /** @type {'none' | 'reload'} */ ('reload'),
 
   // Before logging out of a site that cannot end sessions elsewhere, offer the
-  // password-change route instead. That is currently every site, so this fires on every
-  // per-site logout.
+  // password-change route instead.
   //
-  // The obvious objection is click-through fatigue: a prompt people see constantly is one
-  // they learn to dismiss. It is set to 'always' anyway, because the alternative is worse
-  // - silently logging someone out of a compromised account while the attacker's session
-  // continues, having never mentioned the one action that would have stopped it. 'high'
-  // and 'never' are both a single setting away.
-  compromisePrompt: /** @type {'high' | 'always' | 'never'} */ ('always'),
+  // Briefly defaulted to every site, on the grounds that silently logging someone out of a
+  // compromised account is worse than a prompt they ignore. The "Been hacked?" walkthrough
+  // changed that calculation: there is now a permanent, discoverable route to the same
+  // advice, so the interruption no longer has to carry the whole message. High-risk sites
+  // keep the prompt because that is where a wrong move costs most.
+  compromisePrompt: /** @type {'high' | 'always' | 'never'} */ ('high'),
+
+  // Off, and an optional permission, because a privacy tool does not get to quietly widen
+  // its own access. Frequency never changes a risk tier - a news site read daily is not
+  // more dangerous to lose than a bank visited twice a year - it only breaks ties between
+  // accounts that are already equally sensitive.
+  useVisitFrequency: false,
 
   // Off until a bundle host is actually published. A feature that silently fails its
   // weekly check is worse than one honestly switched off, and leaving it on would train

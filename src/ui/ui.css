@@ -108,6 +108,7 @@ button:disabled { opacity: .55; cursor: default; }
 .badge.high { color: var(--high); }
 .badge.medium { color: var(--medium); }
 .badge.low { color: var(--low); }
+.badge.frequent { color: var(--accent); text-transform: none; letter-spacing: 0; font-weight: 600; }
 
 .status {
   border: 1px solid var(--border); border-left-width: 3px;

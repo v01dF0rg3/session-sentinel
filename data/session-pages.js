@@ -55,5 +55,10 @@ export const SESSION_PAGES = {
   'apple.com': { url: 'https://account.apple.com/', label: 'Devices', revoke: 'unknown', password: 'https://account.apple.com/' },
   'icloud.com': { url: 'https://account.apple.com/', label: 'Devices', revoke: 'unknown', password: 'https://account.apple.com/' },
   'paypal.com': { url: 'https://www.paypal.com/myaccount/security/', label: 'Security', revoke: 'unknown', password: 'https://www.paypal.com/myaccount/security/' },
-  'slack.com': { url: 'https://slack.com/account/settings', label: 'Sessions', revoke: 'unknown' }
+  'slack.com': { url: 'https://slack.com/account/settings', label: 'Sessions', revoke: 'unknown' },
+  // proton.me/logout does not exist - the logout lives on account.proton.me. The account
+  // app is a single-page app that answers 200 for any path, so a deeper link would prove
+  // nothing; the account root is the honest destination.
+  'proton.me': { url: 'https://account.proton.me/', label: 'Account settings', revoke: 'unknown', password: 'https://account.proton.me/' },
+  'protonmail.com': { url: 'https://account.proton.me/', label: 'Account settings', revoke: 'unknown', password: 'https://account.proton.me/' }
 };

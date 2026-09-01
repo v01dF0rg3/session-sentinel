@@ -357,13 +357,11 @@ test('the warning disappears once a site can actually revoke globally', () => {
   assert.equal(compromiseAdviceFor('github.com', true), null);
 });
 
-test('the warning defaults to every site', () => {
-  // No site can currently have its other sessions ended by this extension, so the warning
-  // applies everywhere. Click-through fatigue is a real cost, but a smaller one than
-  // silently logging someone out of a compromised account without ever mentioning the
-  // action that would have helped.
-  assert.equal(DEFAULT_SETTINGS.compromisePrompt, 'always');
-  assert.equal(DEFAULT_SETTINGS.version, 4, 'needs a migration to reach existing installs');
+test('the warning defaults to high-risk sites', () => {
+  // It briefly fired on every logout, when the interruption was the only route to this
+  // advice. "Been hacked?" is now a permanent one, so the prompt is back to where a wrong
+  // move costs most rather than everywhere.
+  assert.equal(DEFAULT_SETTINGS.compromisePrompt, 'high');
 });
 
 test('a site with no bulk revoke says so, and names the alternative', () => {

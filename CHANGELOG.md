@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.20.0 — 31 August 2026
+
+All four items below came from testing on a real profile.
+
+### Fixed
+
+- **No tab is opened on a logout URL that does not exist.** Logging out of Proton opened a
+  visible 404: `proton.me/logout` is not a page, and the fallback navigated there anyway.
+  The engine now probes candidate paths with a HEAD request first and only opens a tab on
+  one that answers. Only an explicit 404 or 410 rules a path out — plenty of sites answer
+  405 to HEAD, which means nothing either way.
+
+  The probe list includes the `account.` subdomain, because Proton's logout lives at
+  `account.proton.me/logout` while the bare domain has none. Cheap to check, impossible to
+  guess. It also spares a wasted tab on vast.ai, whose `/logout` 404s too — the homepage
+  fallback was quietly doing the work there all along.
+
+- Proton added to the known-sites list. Its account app answers 200 for any path, so the
+  link is the account root rather than a deeper URL that would only look more precise.
+
+### Changed
+
+- **The compromise warning is back to high-risk sites only.** It briefly fired on every
+  logout, when an interruption was the only route to that advice. "Been hacked?" is now a
+  permanent, discoverable route to the same thing, so the prompt no longer has to carry the
+  whole message — and a warning people see constantly is one they learn to dismiss.
+
+### Added
+
+- **Optional: order accounts by how often you use them.** Uses `chrome.topSites` — the
+  new-tab shortcuts, not browsing history — behind an optional permission that is off by
+  default. A privacy tool does not get to quietly widen its own access.
+
+  It never changes a risk tier. A news site read daily is not more dangerous to lose than a
+  bank visited twice a year, and letting visit counts drive sensitivity would get the
+  ordering backwards. It breaks ties *within* a tier: given two equally critical accounts,
+  start with the one the user actually lives in. Pinned by a test.
+
+### Tests
+
+87.
+
 ## 0.19.0 — 31 August 2026
 
 ### Compromise recovery

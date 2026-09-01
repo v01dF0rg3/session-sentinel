@@ -141,6 +141,54 @@ export async function runRecipe(recipe, windowId, timeoutMs) {
 }
 
 /**
+ * Conventional logout paths, in the order they are worth probing.
+ *
+ * `account.` is included because Proton's logout lives there while proton.me/logout does
+ * not exist at all - the kind of thing that is cheap to check and impossible to guess.
+ */
+const LOGOUT_PATHS = ['/logout', '/signout', '/sign-out', '/users/sign_out', '/auth/logout'];
+
+/**
+ * Find a logout URL that actually exists, before opening a tab on it.
+ *
+ * Without this the engine navigates a tab to a guessed path and the user watches a 404
+ * appear and disappear - which happened with proton.me/logout, and looks exactly like the
+ * extension is broken. A HEAD request costs nothing and is invisible.
+ *
+ * Only an explicit 404 or 410 rules a path out. Plenty of sites answer 405 to HEAD, or
+ * redirect an anonymous request to a login page; neither means the path is absent.
+ *
+ * @param {string} domain
+ * @param {number} budgetMs
+ * @returns {Promise<string | null>}
+ */
+export async function findLogoutPath(domain, budgetMs = 6000) {
+  const hosts = [domain, `www.${domain}`, `account.${domain}`];
+  const deadline = Date.now() + budgetMs;
+
+  for (const host of hosts) {
+    for (const path of LOGOUT_PATHS) {
+      if (Date.now() > deadline) return null;
+      const url = `https://${host}${path}`;
+      if (!isTrustedLogoutDestination(url, domain)) continue;
+      try {
+        const response = await fetch(url, {
+          method: 'HEAD',
+          credentials: 'omit',
+          redirect: 'follow',
+          signal: AbortSignal.timeout(Math.max(500, Math.min(2500, deadline - Date.now())))
+        });
+        if (response.status !== 404 && response.status !== 410) return url;
+      } catch {
+        // Network error, CORS, or timeout tells us nothing either way. Move on rather
+        // than opening a tab on a URL we have no evidence for.
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * Tier 4 - OpenID Connect RP-initiated logout.
  *
  * Free coverage for anything sitting behind a standards-compliant IdP. Discovery is a
@@ -253,9 +301,17 @@ export async function attemptServerLogout(domain, windowId, timeoutMs) {
   // session is merely abandoned, and an abandoned session is a live token the user can no
   // longer see.
   if (!recipe) {
-    for (const mode of /** @type {const} */ (['path', 'home'])) {
-      if (remaining() < 5000) break;
-      const attempt = await runRecipe(heuristicRecipe(`https://${domain}`, mode), windowId, remaining());
+    // Probe first: only open a tab on a logout URL that is known to exist. Guessing and
+    // letting the user watch a 404 is both useless and alarming.
+    const confirmed = remaining() > 8000 ? await findLogoutPath(domain, Math.min(6000, remaining() - 4000)) : null;
+
+    if (confirmed && remaining() > 5000) {
+      const attempt = await runRecipe(heuristicRecipe(`https://${domain}`, 'path', confirmed), windowId, remaining());
+      if (attempt.result !== 'none') return attempt;
+    }
+
+    if (remaining() > 5000) {
+      const attempt = await runRecipe(heuristicRecipe(`https://${domain}`, 'home'), windowId, remaining());
       if (attempt.result !== 'none') return attempt;
     }
   }
