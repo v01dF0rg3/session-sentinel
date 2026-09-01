@@ -48,7 +48,31 @@ body {
   background: var(--bg);
 }
 
-body.popup { width: 380px; padding: 12px; }
+/* Chrome sizes the popup to the document, so the cap belongs on the root as well as the
+   body - max-height rather than height, so a short list still gives a short popup. */
+:root:has(body.popup) { max-height: 584px; overflow: hidden; }
+
+/* Chrome caps a popup at 600px tall and sizes it to the document. Left to grow, the
+   content ran past that and the footer fell off the bottom of the scroll - the two links
+   that lead to recovery and settings, invisible.
+   So the popup is a bounded flex column: the site list absorbs whatever space is left and
+   scrolls inside itself, and the footer is pinned where it can always be reached. */
+body.popup {
+  width: 380px;
+  padding: 12px;
+  max-height: 584px;
+  display: flex;
+  flex-direction: column;
+  /* The site list is the only thing allowed to scroll. If the page itself can scroll, the
+     footer moves off the bottom edge and the links to recovery and settings vanish. */
+  overflow: hidden;
+}
+body.popup > .header,
+body.popup > .current,
+body.popup > #logout-all,
+body.popup > .hint,
+body.popup > .status,
+body.popup > .footer { flex-shrink: 0; }
 body.options { max-width: 720px; margin: 0 auto; padding: 28px 24px 48px; }
 
 h1 { font-size: 14px; margin: 0; font-weight: 650; }
@@ -125,19 +149,22 @@ button:disabled { opacity: .55; cursor: default; }
 .guidance-item strong { display: block; margin-bottom: 2px; }
 .guidance-item div { color: var(--text-muted); margin-bottom: 3px; }
 
-.sites-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
+/* The one part allowed to shrink. min-height:0 is required or a flex item refuses to
+   shrink below its content and the overflow moves back to the page. */
+.sites { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.sites-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; flex-shrink: 0; }
 .count { color: var(--text-muted); font-size: 11.5px; }
 
 /* With a couple of hundred signed-in sites the list is unusable without a filter. */
 .filter {
-  width: 100%; font: inherit; font-size: 12px; margin-bottom: 6px;
+  width: 100%; flex-shrink: 0; font: inherit; font-size: 12px; margin-bottom: 6px;
   padding: 5px 8px; border-radius: 6px;
   color: var(--text); background: var(--bg); border: 1px solid var(--border);
 }
 .filter::placeholder { color: var(--text-muted); }
 .filter:focus { border-color: var(--accent); }
 
-.site-list { list-style: none; margin: 0; padding: 0; max-height: 240px; overflow-y: auto; }
+.site-list { list-style: none; margin: 0; padding: 0; flex: 1; min-height: 72px; overflow-y: auto; }
 .site-list li {
   display: flex; align-items: center; gap: 8px;
   padding: 6px 4px; border-bottom: 1px solid var(--border);

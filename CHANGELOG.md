@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.21.1 — 1 September 2026
+
+### Fixed
+
+- **The popup footer was cut off**, taking "Been hacked?" and "Settings" with it — the two
+  links that lead anywhere else in the extension, invisible.
+
+  Chrome caps a popup at 600px and sizes it to the document. The content had grown past
+  that (current site, main button, scope line, crash banner, a fixed 240px site list,
+  footer), so the page itself scrolled and the footer sat below the fold.
+
+  The popup is now a bounded flex column: the site list absorbs whatever space is left and
+  scrolls inside itself, the footer is pinned where it can always be reached, and neither
+  the page nor the root element can scroll. The list gets more room when there is no crash
+  banner to display, rather than being fixed at a height chosen for the worst case.
+
 ## 0.21.0 — 31 August 2026
 
 ### Coverage measurement
