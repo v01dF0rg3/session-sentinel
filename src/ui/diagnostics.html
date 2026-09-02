@@ -54,6 +54,23 @@
     </section>
 
     <section class="card" style="margin-top:22px">
+      <h2 style="margin-bottom:6px">Why these sites are listed</h2>
+      <p class="muted" style="margin-bottom:10px">
+        A site is called signed in when it has one convincing auth cookie, or two
+        near-misses. Plenty of sites set server-side cookies for visitors who have never
+        had an account — eBay's <code>nonsession</code> is one — so if something here is
+        not an account of yours, the cookie that caused it is named below. Send it over and
+        the rule gets fixed. Names only; values are never shown or copied.
+      </p>
+      <p id="signin-headline" style="font-weight:650;margin-bottom:8px"></p>
+      <div id="signin-list"></div>
+      <div class="welcome-actions" style="margin-top:12px">
+        <button id="signin-refresh" class="ghost small" type="button">Refresh</button>
+        <button id="signin-copy" class="ghost small" type="button">Copy list</button>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:22px">
       <h2 style="margin-bottom:6px">Activity log</h2>
       <p class="muted" style="margin-bottom:10px">
         Every step of every run, kept across browser restarts. If Chrome closes during a

@@ -1,5 +1,50 @@
 # Changelog
 
+## 0.24.0 — 1 September 2026
+
+### ebay.com was on a list headed SIGNED IN, on the sign-in page, with no account
+
+Two causes, found because the screenshot happened to show the sign-in form unfilled.
+
+**`nonsession`.** The stems that recognise auth cookies match anywhere in a name, which is
+what lets `PHPSESSID` and `__Secure-1PSID` be recognised without a table of every
+framework's spelling. It also means eBay's `nonsession` cookie — the one that holds state
+for people who are *not* signed in — matched `sess`. It is httpOnly, Secure and long, so it
+graded as a real auth token.
+
+Names that say in words that they are not an authenticated session are now excluded:
+`nonsession`, `anon_session`, `unauth`, `preauth`, `no_session`, `sessionless`,
+`logged_out`, `signed_out`, `oauth_state`, `csrftoken`, `xsrf-token`, `assessment`. The
+negative prefixes are anchored to a separator and must sit immediately before the stem, so
+`unified_auth`, `nonce_auth` and `__Secure-authjs.session-token` are untouched. Both halves
+are pinned by tests.
+
+**Being open in a tab.** 0.23.0 counted "open in a tab right now" as a reason to list a
+site, on the grounds that it is strong evidence of use. It is — and use is not the question.
+Sitting on a sign-in page is the counterexample: maximum evidence of attention, zero
+evidence of an account. `open` and Chrome's top-sites list now order the list without ever
+joining it.
+
+What qualifies a site is now only: a convincing auth cookie, or this extension having
+signed the user out of it before.
+
+### A way to argue with the list
+
+Two rounds of this were diagnosed by reasoning about cookie names from memory. That does
+not scale to a profile with hundreds of domains on a machine nobody debugging it can see.
+
+**Settings → Check it works → Why these sites are listed** now names the exact cookies that
+put each site on the list, with a Copy button. If something there is not an account, the
+cookie that caused it is on screen and the rule can be fixed against evidence instead of
+recollection.
+
+Names only. A cookie's value is the session token itself and is never rendered or copied.
+
+### Also
+
+- `dev/diagnostics-preview.html` had drifted from the real page it previews; resynced.
+- 128 tests (up from 125).
+
 ## 0.23.0 — 1 September 2026
 
 ### "225 signed-in sites" was not true

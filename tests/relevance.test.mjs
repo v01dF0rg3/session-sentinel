@@ -11,7 +11,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { compareSites, groupByTier, partitionSites, reasonsToShow } from '../src/core/relevance.js';
+import { compareSites, contextFor, groupByTier, partitionSites, reasonsToShow } from '../src/core/relevance.js';
 
 const site = (domain, tier = 'medium', mode = 'default') => ({ domain, tier, mode });
 
@@ -19,11 +19,21 @@ const site = (domain, tier = 'medium', mode = 'default') => ({ domain, tier, mod
 const filler = (n, tier = 'low') =>
   Array.from({ length: n }, (_, i) => site(`filler-${String(i).padStart(2, '0')}.example`, tier));
 
-test('a site open in a tab is shown, whatever its tier', () => {
-  const reasons = reasonsToShow(site('some-forum.example', 'low'), {
-    open: new Set(['some-forum.example'])
-  });
-  assert.deepEqual(reasons, ['open in a tab now']);
+test('being open in a tab does not put a site on the list', () => {
+  // The counterexample that forced this. Sitting on ebay.com's sign-in page — not signed
+  // in, no account, form unfilled — put ebay.com on a list headed SIGNED IN.
+  assert.deepEqual(reasonsToShow(site('ebay.com', 'high'), { open: new Set(['ebay.com']) }), []);
+  assert.deepEqual(contextFor(site('ebay.com', 'high'), { open: new Set(['ebay.com']) }), [
+    'open in a tab now'
+  ]);
+});
+
+test('having been signed out of a site before counts as having an account', () => {
+  // The cookies that proved it are the ones this extension removed, so the memory of
+  // having acted on it is the only evidence left.
+  assert.deepEqual(reasonsToShow(site('github.com', 'critical'), {
+    acted: new Set(['github.com'])
+  }), ['you have signed out of this before']);
 });
 
 test('an unremarkable site with no signals is not shown first', () => {
@@ -46,21 +56,21 @@ test('a high-value account the user has no account on is not shown', () => {
 });
 
 test('reasons accumulate, strongest first', () => {
-  const reasons = reasonsToShow(site('github.com', 'critical'), {
+  const signals = {
     signedIn: new Set(['github.com']),
     open: new Set(['github.com']),
     acted: new Set(['github.com'])
-  });
-  assert.deepEqual(reasons, [
+  };
+  assert.deepEqual(reasonsToShow(site('github.com', 'critical'), signals), [
     'signed in here',
-    'open in a tab now',
     'you have signed out of this before'
   ]);
+  assert.deepEqual(contextFor(site('github.com', 'critical'), signals), ['open in a tab now']);
 });
 
 test('the split hides the long tail and says that it did', () => {
   const sites = [site('github.com', 'critical'), ...filler(20)];
-  const { used, other, narrowed } = partitionSites(sites, { open: new Set(['github.com']) });
+  const { used, other, narrowed } = partitionSites(sites, { signedIn: new Set(['github.com']) });
 
   assert.deepEqual(used.map((s) => s.domain), ['github.com']);
   assert.equal(other.length, 20);

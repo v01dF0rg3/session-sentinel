@@ -385,3 +385,52 @@ el.copy.addEventListener('click', async () => {
   el.copy.textContent = 'Copied';
   setTimeout(() => { el.copy.textContent = 'Copy report'; }, 1500);
 });
+
+// --- why these sites are listed ------------------------------------------------------
+
+/** @type {{ domain: string, strong: string[], moderate: string[] }[]} */
+let signInRows = [];
+
+async function loadSignIn() {
+  signInRows = (await chrome.runtime.sendMessage({ type: 'explainSignedIn' })) ?? [];
+
+  const headline = document.getElementById('signin-headline');
+  const list = document.getElementById('signin-list');
+  if (!headline || !list) return;
+
+  headline.textContent = signInRows.length
+    ? `${signInRows.length} site${signInRows.length === 1 ? '' : 's'} judged signed in.`
+    : 'No site looks signed in yet.';
+
+  list.replaceChildren();
+  for (const row of signInRows) {
+    const line = document.createElement('div');
+    line.className = 'log-row';
+
+    const domain = document.createElement('span');
+    domain.style.fontWeight = '600';
+    domain.textContent = row.domain;
+
+    const why = document.createElement('span');
+    why.className = 'muted';
+    // Strong cookies are the ones that decided it, so they are named first and in full.
+    why.textContent = ` ${[...row.strong, ...row.moderate].join(', ')}`;
+
+    line.append(domain, why);
+    list.append(line);
+  }
+}
+
+document.getElementById('signin-refresh')?.addEventListener('click', loadSignIn);
+
+document.getElementById('signin-copy')?.addEventListener('click', async () => {
+  const text = signInRows
+    .map((row) => `${row.domain}: ${[...row.strong, ...row.moderate].join(', ')}`)
+    .join(BREAK);
+  await navigator.clipboard.writeText(text);
+  const button = /** @type {HTMLButtonElement} */ (document.getElementById('signin-copy'));
+  button.textContent = 'Copied';
+  setTimeout(() => { button.textContent = 'Copy list'; }, 1500);
+});
+
+loadSignIn();

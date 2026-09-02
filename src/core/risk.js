@@ -76,6 +76,30 @@ export function looksLikeSessionCookie(name) {
 }
 
 /**
+ * Names that contain a session stem while meaning the opposite.
+ *
+ * The stems above match anywhere in a name, which is what lets `PHPSESSID` and
+ * `__Secure-1PSID` be recognised without a table of every framework's spelling. It also
+ * means `nonsession` matches `sess` — and eBay's `nonsession` cookie is httpOnly, Secure
+ * and long, so it graded as a real auth token and put ebay.com on the signed-in list of
+ * someone who has never had an eBay account.
+ *
+ * Each entry here is a name that says, in words, that it is not an authenticated session:
+ *
+ *   nonsession, anon_session, no_session, sessionless   not a session
+ *   unauth, preauth, logged_out, signed_out             not authenticated
+ *   csrftoken, xsrf-token                               a token, but an anti-forgery one,
+ *                                                       and required to be script-readable
+ *   oauth_state                                         a handshake nonce, not a session
+ *   assessment                                          contains "sess" by accident
+ *
+ * The negative prefixes are anchored to a separator or the start and must be followed
+ * immediately by the stem, so `unified_auth` and `nonce_auth` are untouched.
+ */
+const NOT_A_SESSION =
+  /(^|[_.-])(non|anon|un|pre|no)[_.-]?(sess|auth)|sessionless|(logged|signed)[_.-]?out|(c|x)srf|assess|(^|[_.-])o?auth[_.-]?state([_.-]|$)/i;
+
+/**
  * @typedef {'strong' | 'moderate' | 'weak' | 'none'} SessionEvidence
  */
 
@@ -102,7 +126,7 @@ export function looksLikeSessionCookie(name) {
  * @returns {SessionEvidence}
  */
 export function sessionEvidence(cookie) {
-  const named = STRONG_SESSION_STEM.test(cookie.name);
+  const named = STRONG_SESSION_STEM.test(cookie.name) && !NOT_A_SESSION.test(cookie.name);
   const opaque = (cookie.value?.length ?? 0) >= 16;
 
   // httpOnly and Secure together, with a name that says session and a value long enough to

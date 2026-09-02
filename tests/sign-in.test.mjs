@@ -43,11 +43,38 @@ test('analytics and consent cookies are not evidence of an account', () => {
 });
 
 test('httpOnly is the discriminator, not the name', () => {
-  // A CSRF token has "token" in the name and is deliberately readable by scripts, because
-  // the page has to send it back. It is not proof of a session.
-  assert.equal(sessionEvidence(cookie('csrftoken', { httpOnly: false })), 'weak');
   assert.equal(sessionEvidence(cookie('sessionid', { httpOnly: false })), 'weak');
   assert.equal(sessionEvidence(cookie('sessionid', { httpOnly: true })), 'strong');
+});
+
+test('names that say they are not a session are not counted as one', () => {
+  // eBay's `nonsession` cookie is httpOnly, Secure and long, and the stem `sess` matches
+  // anywhere in a name — so it graded as a real auth token and put ebay.com on the
+  // signed-in list of someone who has never had an eBay account.
+  for (const name of [
+    'nonsession',
+    'anon_session',
+    'unauth',
+    'preauth',
+    'no_session',
+    'sessionless',
+    'logged_out',
+    'signed_out',
+    'oauth_state',
+    'csrftoken',
+    'xsrf-token',
+    'assessment'
+  ]) {
+    assert.equal(sessionEvidence(cookie(name)), 'none', name);
+  }
+});
+
+test('the negation guard does not swallow real auth cookies', () => {
+  // Anchored to a separator and required to sit immediately before the stem, so a name
+  // that merely starts with those letters is untouched.
+  for (const name of ['unified_auth', 'nonce_auth', '__Secure-authjs.session-token']) {
+    assert.equal(sessionEvidence(cookie(name)), 'strong', name);
+  }
 });
 
 test('a short value is not a session token', () => {

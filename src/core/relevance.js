@@ -18,12 +18,15 @@
  * has ever opened, with timestamps, to answer a question about domains. So relevance is
  * assembled from signals we already hold for other reasons:
  *
- *   signedIn  A cookie that looks like a real auth token, or a sign-in this extension
- *             watched happen. The direct answer to the actual question.
- *   open      The site is open in a tab right now. Free, and needs no permission we do
- *             not already have.
- *   frequent  Chrome's own top-sites list. Optional permission, off by default.
- *   acted     The user has already run a logout on this site. They cared once.
+ *   signedIn  A cookie that looks like a real auth token, or a sign-in already recorded.
+ *             The direct answer to the actual question.
+ *   acted     This extension has signed the user out of it before, so there was an
+ *             account, even if the cookies proving it are the ones we removed.
+ *
+ * `open` and `frequent` are deliberately NOT among them. They say a site matters to the
+ * user, not that the user has an account on it — and being open in a tab was how ebay.com
+ * reached a list headed SIGNED IN while its sign-in form sat unfilled on screen. They
+ * order the list; they never join it.
  *
  * An earlier version also promoted anything in the curated high-value list, reasoning that
  * a bank behind a disclosure was worse than a longer list. That was compensating for a
@@ -53,12 +56,26 @@
  * @property {string} [mode]
  */
 
-/** Why a site earned its place, strongest first. The order is the ranking. */
-const REASONS = /** @type {const} */ ([
+/**
+ * Reasons that put a site on the list. Both are evidence of an *account*, which is the
+ * only thing being asked.
+ */
+const QUALIFYING = /** @type {const} */ ([
   ['signedIn', 'signed in here'],
-  ['open', 'open in a tab now'],
-  ['frequent', 'one of your most-visited sites'],
   ['acted', 'you have signed out of this before']
+]);
+
+/**
+ * Signals that say a site matters to the user but not that they have an account on it.
+ *
+ * These used to qualify a site for the list, and being open in a tab was the strongest of
+ * them. It is also the exact counterexample: sitting on ebay.com's sign-in page, not
+ * signed in, having never had an account, put ebay.com on a list headed SIGNED IN. Being
+ * somewhere is not the same as belonging there, so these now only break ties.
+ */
+const CONTEXT = /** @type {const} */ ([
+  ['open', 'open in a tab now'],
+  ['frequent', 'one of your most-visited sites']
 ]);
 
 const TIER_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
@@ -71,14 +88,18 @@ const TIER_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
  * @returns {string[]}
  */
 export function reasonsToShow(site, signals) {
-  const held = {
-    signedIn: signals.signedIn?.has(site.domain) ?? false,
-    open: signals.open?.has(site.domain) ?? false,
-    frequent: signals.frequent?.has(site.domain) ?? false,
-    acted: signals.acted?.has(site.domain) ?? false
-  };
+  return QUALIFYING.filter(([key]) => signals[key]?.has(site.domain)).map(([, label]) => label);
+}
 
-  return REASONS.filter(([key]) => held[key]).map(([, label]) => label);
+/**
+ * Context that affects ordering but never inclusion.
+ *
+ * @param {SiteLike} site
+ * @param {RelevanceSignals} signals
+ * @returns {string[]}
+ */
+export function contextFor(site, signals) {
+  return CONTEXT.filter(([key]) => signals[key]?.has(site.domain)).map(([, label]) => label);
 }
 
 /**
@@ -92,9 +113,10 @@ export function reasonsToShow(site, signals) {
  * @param {SiteLike & { reasons?: string[] }} b
  */
 export function compareSites(a, b) {
+  const weight = (/** @type {any} */ s) => (s.reasons?.length ?? 0) + (s.context?.length ?? 0);
   return (
     TIER_ORDER[a.tier] - TIER_ORDER[b.tier] ||
-    (b.reasons?.length ?? 0) - (a.reasons?.length ?? 0) ||
+    weight(b) - weight(a) ||
     a.domain.localeCompare(b.domain)
   );
 }
@@ -127,7 +149,7 @@ export function partitionSites(sites, signals = {}) {
 
   for (const site of sites) {
     const reasons = reasonsToShow(site, signals);
-    const entry = { ...site, reasons };
+    const entry = { ...site, reasons, context: contextFor(site, signals) };
     if (reasons.length || site.mode === 'ignored') used.push(entry);
     else other.push(entry);
   }

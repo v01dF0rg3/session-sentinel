@@ -15,7 +15,7 @@
  */
 
 import { ensureInitialized, getSettings, getState, migrateSettings, setSiteOverride, updateSettings, updateState } from '../platform/settings.js';
-import { discoverSessions, likelyLoggedIn } from '../platform/sessions.js';
+import { discoverSessions, explainSignedIn, likelyLoggedIn } from '../platform/sessions.js';
 import { isRunInProgress, runLocalWipe, runLogout } from '../engine/run.js';
 import { resolveTier } from '../core/plan.js';
 import { registrableDomain, hostnameFromUrl } from '../core/domain.js';
@@ -271,6 +271,9 @@ async function handleMessage(message) {
     // Both records describe the user rather than the extension, so the control that
     // forgets one forgets the other. Leaving a list of every site they have signed into
     // behind a button labelled "clear" would be exactly the wrong surprise.
+    case 'explainSignedIn':
+      return explainSignedIn();
+
     case 'clearObservedLogins':
       await clearObservedLogins();
       return { ok: true };

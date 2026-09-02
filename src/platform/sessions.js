@@ -211,3 +211,42 @@ export async function verifyCleared(domain) {
     return false;
   }
 }
+
+/**
+ * Which cookies made each site look signed in.
+ *
+ * Two rounds of this list being wrong were diagnosed by me reasoning about cookie names
+ * from memory — `nonsession` was found that way, and only because eBay happened to be on
+ * screen. That does not scale to a profile with hundreds of domains on a machine I cannot
+ * see. This turns the next disagreement into evidence: the user can look at exactly which
+ * cookie put a site on the list and say "that one is not a login".
+ *
+ * Names only. A cookie's value is the session token itself and has no business being
+ * rendered, copied to a clipboard, or pasted into a bug report.
+ *
+ * @returns {Promise<{ domain: string, strong: string[], moderate: string[] }[]>}
+ */
+export async function explainSignedIn() {
+  const cookies = await chrome.cookies.getAll({});
+  /** @type {Map<string, { domain: string, strong: string[], moderate: string[] }>} */
+  const sites = new Map();
+
+  for (const cookie of cookies) {
+    const evidence = sessionEvidence(cookie);
+    if (evidence !== 'strong' && evidence !== 'moderate') continue;
+
+    const domain = registrableDomain(normalizeCookieDomain(cookie.domain));
+    if (!domain || domain === 'localhost') continue;
+
+    let entry = sites.get(domain);
+    if (!entry) {
+      entry = { domain, strong: [], moderate: [] };
+      sites.set(domain, entry);
+    }
+    entry[evidence].push(cookie.name);
+  }
+
+  return [...sites.values()]
+    .filter((entry) => entry.strong.length > 0 || entry.moderate.length >= 2)
+    .sort((a, b) => a.domain.localeCompare(b.domain));
+}

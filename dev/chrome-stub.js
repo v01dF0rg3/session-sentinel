@@ -105,15 +105,10 @@
   // no longer enough on its own - that rule is what put aol.com on screen.
   const signedInNow = new Set(['github.com', 'google.com', 'youtube.com', 'chase.com', 'slack.com']);
 
+  // Only evidence of an account qualifies. openNow and frequentNow order the list but no
+  // longer join it - being on ebay.com's sign-in page is not being signed into ebay.com.
   const usedDomains = sites
-    .filter(
-      (s) =>
-        signedInNow.has(s.domain) ||
-        openNow.has(s.domain) ||
-        frequentNow.has(s.domain) ||
-        actedOn.has(s.domain) ||
-        s.mode === 'ignored'
-    )
+    .filter((s) => signedInNow.has(s.domain) || actedOn.has(s.domain) || s.mode === 'ignored')
     .map((s) => s.domain);
 
   const overview = () => ({
@@ -312,6 +307,16 @@
               { t: Date.now() - 7800, type: 'run:complete', detail: '1 site(s)' },
               { t: Date.now() - 2000, type: 'browser:startup', detail: '' }
             ], 30);
+
+          // Real names, including the one that caused the bug, so the panel is checked
+          // against the case it exists to explain.
+          case 'explainSignedIn':
+            return delay([
+              { domain: 'chase.com', strong: ['JSESSIONID'], moderate: [] },
+              { domain: 'github.com', strong: ['user_session', '__Host-user_session_same_site'], moderate: [] },
+              { domain: 'google.com', strong: ['__Secure-1PSID', 'SSID'], moderate: [] },
+              { domain: 'slack.com', strong: ['d'], moderate: ['x'] }
+            ], 60);
 
           case 'clearEventLog':
             return delay({ ok: true }, 10);

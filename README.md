@@ -22,6 +22,12 @@ So two questions are kept apart, deliberately:
   while real auth cookies are set `httpOnly` precisely so a cross-site script cannot steal
   them. One convincing auth cookie, or two near-misses, means you have an account here.
 
+Being open in a tab, or high in your top sites, orders the list but never joins it — a
+sign-in page is maximum evidence of attention and zero evidence of an account.
+
+If a site is listed that is not yours, **Settings → Check it works → Why these sites are
+listed** names the exact cookie that caused it.
+
 Everything else collapses behind **"Show N other sites with sign-in cookies"**. It is a
 display split, not a change of scope: the total stays on screen, the filter still searches
 all of it, and "Log out of all sessions" still clears all of it.
