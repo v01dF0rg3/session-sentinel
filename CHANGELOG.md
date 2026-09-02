@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.30.1 — 2 September 2026
+
+### The offer buttons worked at random because they answered last
+
+Both handlers awaited something — storage, or Chrome's permission prompt — *before* touching
+anything visible. So whether a click appeared to do anything depended on how long that await
+took, and on whether the popup survived it. Chrome dismisses the popup to show a permission
+prompt, and a popup that closes mid-await never reaches its own second line.
+
+Both now change the UI first and persist afterwards. Neither needs the await to have
+finished to be correct: the service worker mirrors a granted permission into the setting on
+its own, and a dismissal that fails to persist costs one reappearing row rather than a
+control that seems broken. Verified with storage artificially slowed to four seconds.
+
+If Chrome refuses the permission request from a popup outright — some builds do — it now
+falls back to opening Settings, where the same checkbox has always worked.
+
+### Reading the page again, for apps that draw themselves late
+
+`status === "complete"` means the document finished, not that a single-page app has drawn
+its account menu. One look at that moment finds nothing on plenty of sites.
+
+The page is now read up to three times — at load, then 2.5s and 6s later — stopping as soon
+as it says something definite. Single-page route changes get a look too, since that is when
+such apps tend to finish building their chrome.
+
+The sign-out pattern is also anchored only at the start now, because sites label the control
+with the account it ends: X renders **"Log out @handle"**, and demanding an exact match
+missed it. Prose like "How to sign out of all devices" and "You were logged out" still does
+not match.
+
+**A limit worth stating.** Some apps, X among them, put "Log out" in a menu that does not
+exist in the page until it is opened. No amount of looking at the loaded page will find it,
+and opening menus on the user's behalf is not something this extension should do. Those
+sites stay in the one-time **Yours?** queue, which is what that queue is for.
+
 ## 0.30.0 — 2 September 2026
 
 ### Visiting a site you are already signed into now confirms it

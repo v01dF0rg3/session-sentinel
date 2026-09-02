@@ -68,8 +68,15 @@ test('the text patterns match how sites actually word it', () => {
   for (const text of ['Sign out', 'Log out', 'Logout', 'SIGN OUT', 'log-out', 'Sign off']) {
     assert.ok(LOGOUT_TEXT.test(text), text);
   }
+
+  // Anchored at the start but not at the end, because sites label the control with the
+  // account it ends. X renders "Log out @handle", and demanding an exact match missed it.
+  for (const text of ['Log out @someone', 'Sign out of all devices']) {
+    assert.ok(LOGOUT_TEXT.test(text), text);
+  }
+
   // Must not fire on prose that merely mentions signing out.
-  for (const text of ['How to sign out of all devices', 'Signed out successfully']) {
+  for (const text of ['How to sign out of all devices', 'Signed out successfully', 'You were logged out']) {
     assert.equal(LOGOUT_TEXT.test(text), false, text);
   }
 

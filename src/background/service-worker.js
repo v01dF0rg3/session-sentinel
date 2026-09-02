@@ -595,6 +595,14 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   void askPageIfSignedIn(tabId, domain);
 });
 
+// A single-page app changes its URL without reloading, and often builds the account menu
+// only after the first route settles. This is the cheapest second chance available.
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (!changeInfo.url || !tab.url?.startsWith('https://')) return;
+  const host = hostnameFromUrl(tab.url);
+  if (host) void askPageIfSignedIn(tabId, registrableDomain(host));
+});
+
 /**
  * Ask the page whether the user is signed in, for sites nothing else has settled.
  *
@@ -609,9 +617,14 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
  * @param {number} tabId
  * @param {string} domain
  */
-async function askPageIfSignedIn(tabId, domain) {
-  if (probedThisSession.has(domain)) return;
-  probedThisSession.add(domain);
+async function askPageIfSignedIn(tabId, domain, attempt = 0) {
+  // Retried, because "complete" fires when the document is done, not when a single-page
+  // app has drawn its account menu. One look at that moment finds nothing on plenty of
+  // sites. Attempts stop as soon as the page says something definite, and stop entirely
+  // after three - a site that has shown neither control by then is not going to.
+  const tries = probedThisSession.get(domain) ?? 0;
+  if (tries > attempt) return;
+  probedThisSession.set(domain, attempt + 1);
 
   try {
     const settled = await getPageVerdicts();
@@ -636,16 +649,29 @@ async function askPageIfSignedIn(tabId, domain) {
     if (!frame?.result) return;
 
     const verdict = readPageEvidence(frame.result);
-    if (verdict !== 'unknown') await recordPageVerdict(domain, verdict);
+    if (verdict !== 'unknown') {
+      await recordPageVerdict(domain, verdict);
+      return;
+    }
+
+    // Nothing yet. Look again, further from the load, in case the page had not finished
+    // building itself. The delays are long because the alternative - polling - would mean
+    // watching a page continuously, which is far more than this needs.
+    if (attempt < 2) {
+      setTimeout(() => void askPageIfSignedIn(tabId, domain, attempt + 1), attempt === 0 ? 2500 : 6000);
+    }
   } catch {
-    // A page that refuses injection - the Chrome Web Store, a PDF viewer, a page still
-    // navigating - simply stays a question.
+    // A page that refuses injection - the Chrome Web Store, a PDF viewer, a tab closed
+    // mid-flight - simply stays a question for the user to answer.
     probedThisSession.delete(domain);
   }
 }
 
-/** @type {Set<string>} */
-const probedThisSession = new Set();
+/**
+ * Attempts made per domain in this service-worker lifetime.
+ * @type {Map<string, number>}
+ */
+const probedThisSession = new Map();
 
 
 

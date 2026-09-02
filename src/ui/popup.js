@@ -733,24 +733,47 @@ async function renderFrequencyOffer() {
   }
 }
 
+/**
+ * Both handlers change the UI first and persist afterwards.
+ *
+ * They used to await storage, or Chrome's permission prompt, before touching anything
+ * visible — so whether the click appeared to do anything depended on how long that await
+ * took and whether the popup survived it. Chrome dismisses the popup to show a permission
+ * prompt, and a popup that closes mid-await never reaches its own second line. From the
+ * user's side that reads as a button that works at random.
+ *
+ * Nothing here needs the await to have finished to be correct: the service worker mirrors
+ * a granted permission into the setting on its own, and a dismissal that fails to persist
+ * costs one reappearing row rather than a broken control.
+ */
 document.getElementById('frequency-enable')?.addEventListener('click', async () => {
-  // Called straight from the click: Chrome grants an optional permission only during a
-  // user gesture, and awaiting anything first loses it.
-  //
-  // Chrome may dismiss the popup to show its prompt, which would kill this function
-  // mid-flight and leave the permission granted while the setting stayed off. The service
-  // worker watches permissions.onAdded and sets it there, so the two cannot disagree
-  // whether or not these next two lines ever run.
-  const granted = await chrome.permissions.request({ permissions: ['topSites'] });
+  hideOffer();
+
+  let granted = false;
+  try {
+    // First statement after the gesture: Chrome grants optional permissions only during a
+    // user gesture, and awaiting anything beforehand loses it.
+    granted = await chrome.permissions.request({ permissions: ['topSites'] });
+  } catch {
+    // Some Chrome builds refuse this from a popup outright. Settings is an ordinary tab,
+    // where the prompt has somewhere to sit and the existing checkbox already works.
+    chrome.runtime.openOptionsPage();
+    return;
+  }
+
   if (!granted) {
     await chrome.storage.local.set({ [OFFER_KEY]: true });
-    document.getElementById('frequency-offer').hidden = true;
     return;
   }
   await load();
 });
 
-document.getElementById('frequency-dismiss')?.addEventListener('click', async () => {
-  await chrome.storage.local.set({ [OFFER_KEY]: true });
-  document.getElementById('frequency-offer').hidden = true;
+document.getElementById('frequency-dismiss')?.addEventListener('click', () => {
+  hideOffer();
+  void chrome.storage.local.set({ [OFFER_KEY]: true });
 });
+
+function hideOffer() {
+  const offer = document.getElementById('frequency-offer');
+  if (offer) offer.hidden = true;
+}

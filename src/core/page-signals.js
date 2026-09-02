@@ -62,6 +62,6 @@ export function readPageEvidence(evidence) {
  * Exported so the injected function and the tests agree on one list. The injected copy
  * inlines these patterns because it cannot import; the tests here pin the intent.
  */
-export const LOGOUT_TEXT = /^\s*(sign|log)\s*-?\s*(out|off)\s*$/i;
+export const LOGOUT_TEXT = /^\s*(sign|log)\s*-?\s*(out|off)\b/i;
 export const SIGNIN_TEXT = /^\s*(sign|log)\s*-?\s*in\b|^\s*login\s*$|^\s*create account\s*$|^\s*sign up\s*$/i;
 export const LOGOUT_HREF = /\/(logout|signout|sign-out|sign_out|log-out|log_out)(\/|\?|#|$)/i;

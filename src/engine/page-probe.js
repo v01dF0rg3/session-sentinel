@@ -15,7 +15,7 @@
  * @returns {import('../core/page-signals.js').PageEvidence}
  */
 export function collectPageEvidence() {
-  const LOGOUT_TEXT = /^\s*(sign|log)\s*-?\s*(out|off)\s*$/i;
+  const LOGOUT_TEXT = /^\s*(sign|log)\s*-?\s*(out|off)\b/i;
   const SIGNIN_TEXT = /^\s*(sign|log)\s*-?\s*in\b|^\s*login\s*$|^\s*create account\s*$|^\s*sign up\s*$/i;
   const LOGOUT_HREF = /\/(logout|signout|sign-out|sign_out|log-out|log_out)(\/|\?|#|$)/i;
 
