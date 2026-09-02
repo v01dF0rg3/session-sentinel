@@ -120,7 +120,8 @@
       used: usedDomains,
       otherCount: sites.length - usedDomains.length,
       narrowed: sites.length - usedDomains.length >= 3,
-      canRankByFrequency: settings.useVisitFrequency
+      canRankByFrequency: settings.useVisitFrequency,
+      unresolved: []
     },
     recipeStatus: { total: 3, source: 'built-in', bundleVersion: null, fetchedAt: null },
     crashTrail: crashTrail.value
@@ -317,6 +318,14 @@
               { domain: 'google.com', strong: ['__Secure-1PSID', 'SSID'], moderate: [] },
               { domain: 'slack.com', strong: ['d'], moderate: ['x'] }
             ], 60);
+
+          // The measured answer for github.com, so the panel is checked against the case
+          // it exists to report.
+          case 'probeSelfTest':
+            return delay({ works: true, names: ['_gh_sess', '_octo', 'logged_in'] }, 500);
+
+          case 'resolveSignIn':
+            return delay({ resolved: (message.domains ?? []).length, usable: 0 }, 300);
 
           case 'clearEventLog':
             return delay({ ok: true }, 10);

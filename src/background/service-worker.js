@@ -29,6 +29,8 @@ import { clearCoverage, readCoverage } from '../platform/coverage.js';
 import { summariseCoverage } from '../core/coverage.js';
 import { partitionSites } from '../core/relevance.js';
 import { knownChangePasswordSupport, probeChangePassword } from '../platform/change-password.js';
+import { anonBaseline, knownBaselines, probeSelfTest, recordFirstSight } from '../platform/anon-baseline.js';
+import { judgeSignIn } from '../core/anon-baseline.js';
 
 const RECIPE_ALARM = 'sentinel-recipe-refresh';
 
@@ -270,6 +272,12 @@ async function handleMessage(message) {
     case 'explainSignedIn':
       return explainSignedIn();
 
+    case 'resolveSignIn':
+      return resolveSignIn(message.domains ?? []);
+
+    case 'probeSelfTest':
+      return probeSelfTest();
+
     case 'getEventLog':
       return readLog();
 
@@ -321,7 +329,8 @@ async function getOverview() {
   // A profile carries hundreds of cookied domains and a dozen the user would recognise.
   // Split them so the recognisable ones are what gets seen; the run is unaffected, and
   // the popup still states the true total next to the button that acts on it.
-  const { used, other, narrowed } = partitionSites(discovered, await relevanceSignals(settings, sessions));
+  const signals = await relevanceSignals(settings, sessions);
+  const { used, other, narrowed } = partitionSites(discovered, signals);
   const sites = [...used, ...other];
 
   const bundle = await getStoredBundle();
@@ -337,7 +346,11 @@ async function getOverview() {
       used: used.map((s) => s.domain),
       otherCount: other.length,
       narrowed,
-      canRankByFrequency: settings.useVisitFrequency
+      canRankByFrequency: settings.useVisitFrequency,
+      // Sites whose cookies look session-bearing but which nothing has ruled in or out.
+      // The popup asks for these to be resolved after it has drawn, so a network round
+      // trip never delays the list.
+      unresolved: signals.unresolved ?? []
     },
     lastReport: state.lastReport,
     // A breadcrumb still present means a previous run never reached its end - the browser
@@ -350,6 +363,34 @@ async function getOverview() {
       fetchedAt: bundle?.fetchedAt ?? null
     }
   };
+}
+
+/**
+ * Ask the named sites what they hand a stranger, so the next scan can judge them.
+ *
+ * Answers are cached by the platform layer and describe the site rather than the user, so
+ * this is a first-sight cost per domain. Concurrency is capped: a profile can produce
+ * dozens of unresolved sites at once and a burst of requests would be both slow and rude.
+ *
+ * @param {string[]} domains
+ * @returns {Promise<{ resolved: number, usable: number }>}
+ */
+async function resolveSignIn(domains) {
+  const queue = [...new Set(domains)].slice(0, 60);
+  let usable = 0;
+
+  const workers = Array.from({ length: Math.min(4, queue.length) }, async () => {
+    for (let next = queue.shift(); next; next = queue.shift()) {
+      const baseline = await anonBaseline(next);
+      if (baseline.usable) usable += 1;
+    }
+  });
+
+  await Promise.all(workers);
+  // `usable` is the honest measure of whether asking sites works at all in this browser:
+  // Set-Cookie is a forbidden response header, and whether Chrome exposes it to an
+  // extension through getSetCookie() is a fact about a real browser, not a deduction.
+  return { resolved: domains.length, usable };
 }
 
 /**
@@ -435,20 +476,31 @@ async function relevanceSignals(settings, sessions) {
 
   // Live evidence only, deliberately.
   //
-  // An earlier version also kept a permanent record of every domain ever judged signed in,
-  // so a site would survive the logout that removed the cookies proving it. That made a
-  // heuristic mistake immortal: ebay.com was written in under a rule that mistook
-  // `nonsession` for an auth cookie, and it stayed on the list after the rule was fixed,
-  // because nothing ever re-checked it. Every site misjudged in that window was frozen the
-  // same way. A cached judgement is only as good as the judgement, and this one had no
-  // way to change its mind.
+  // An earlier version kept a permanent record of every domain ever judged signed in, so a
+  // site would survive the logout that removed the cookies proving it. That made a
+  // heuristic mistake immortal: sites written in under a rule later found wrong stayed
+  // listed, because nothing re-checked them. `acted` covers the same case honestly - it
+  // records what this extension DID, not what it concluded.
   //
-  // Surviving our own wipe was the record's only real justification, and `acted` already
-  // covers exactly that: it records what this extension DID, not what it concluded, so it
-  // cannot be wrong in the same way.
-  const signedIn = new Set(sessions.filter((session) => session.signedIn).map((s) => s.domain));
+  // The candidate test in sessions.js is not the answer either. bloomberg.com passes it
+  // while handing `_session_id_backup` to strangers, so each candidate is checked against
+  // what the site gives someone with no account.
+  const candidates = sessions.filter((session) => session.signedIn);
+  const firstSight = await recordFirstSight(candidates);
+  const baselines = await knownBaselines();
 
-  return { signedIn, open, frequent, acted };
+  /** @type {Set<string>} */
+  const signedIn = new Set();
+  /** @type {string[]} */
+  const unresolved = [];
+
+  for (const site of candidates) {
+    const verdict = judgeSignIn(site.authNames, baselines[site.domain] ?? null, firstSight[site.domain]);
+    if (verdict === 'signedIn') signedIn.add(site.domain);
+    else if (verdict === 'unknown') unresolved.push(site.domain);
+  }
+
+  return { signedIn, open, frequent, acted, unresolved };
 }
 
 /** Keep Chrome's idle threshold in step with the configured timeout. */

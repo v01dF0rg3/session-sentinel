@@ -61,6 +61,29 @@ function setStatus(text, tone) {
 async function load() {
   overview = await send({ type: 'getOverview' });
   render();
+  void resolveUnknownSites();
+}
+
+/**
+ * Settle the sites whose cookies look session-bearing but prove nothing either way.
+ *
+ * A site is only called signed in once something has ruled its cookies in or out — and
+ * with nothing to compare against, every session cookie looks like an account. That is how
+ * bloomberg.com, which hands `_session_id_backup` to strangers, ended up on a list headed
+ * SIGNED IN. Resolving means asking those sites what they give someone with no account.
+ *
+ * It runs after the first render and never blocks it. Answers are cached per domain, so
+ * this is a first-sight cost that quietly disappears.
+ */
+async function resolveUnknownSites() {
+  const unresolved = overview?.relevance?.unresolved ?? [];
+  if (!unresolved.length) return;
+
+  const result = await send({ type: 'resolveSignIn', domains: unresolved });
+  if (!result?.usable) return;
+
+  overview = await send({ type: 'getOverview' });
+  render();
 }
 
 function render() {

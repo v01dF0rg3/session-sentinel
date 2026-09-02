@@ -389,6 +389,7 @@ let signInRows = [];
 
 async function loadSignIn() {
   signInRows = (await chrome.runtime.sendMessage({ type: 'explainSignedIn' })) ?? [];
+  void reportSignInMethod();
 
   const headline = document.getElementById('signin-headline');
   const list = document.getElementById('signin-list');
@@ -430,3 +431,27 @@ document.getElementById('signin-copy')?.addEventListener('click', async () => {
 });
 
 loadSignIn();
+
+/**
+ * Say which method is deciding, and prove it rather than claim it.
+ *
+ * A site's session cookie is not evidence of an account — bloomberg.com hands
+ * `_session_id_backup` to strangers — so the extension asks sites what they give someone
+ * with no account and subtracts that. Whether it CAN ask depends on Chrome exposing a
+ * forbidden response header, which is a question about this browser. github.com is the
+ * yardstick: a stranger gets `_gh_sess`, `_octo` and `logged_in`, never `user_session`.
+ */
+async function reportSignInMethod() {
+  const line = document.getElementById('signin-method');
+  if (!line) return;
+  line.textContent = 'Checking whether this browser lets the extension ask sites…';
+
+  try {
+    const result = await chrome.runtime.sendMessage({ type: 'probeSelfTest' });
+    line.textContent = result?.works
+      ? `Asking sites works. github.com gives a stranger: ${result.names.join(', ')}.`
+      : 'This browser does not expose Set-Cookie to the extension, so sites cannot be asked directly. Falling back to what each site already had the first time it was seen, which cannot settle sites you were already signed into before installing.';
+  } catch {
+    line.textContent = 'Could not check.';
+  }
+}

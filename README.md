@@ -17,10 +17,13 @@ So two questions are kept apart, deliberately:
 
 - **What should be cleared?** Answered generously. Missing a session cookie leaves a live
   token behind, so anything that might carry one is in scope.
-- **What should be shown?** Answered strictly. The discriminator is `httpOnly` — analytics,
-  consent and preference cookies must be readable by page scripts or they are useless,
-  while real auth cookies are set `httpOnly` precisely so a cross-site script cannot steal
-  them. One convincing auth cookie, or two near-misses, means you have an account here.
+- **What should be shown?** Answered by asking the site. A session cookie is not evidence
+  of an account: fetched with no cookies at all, bloomberg.com hands a stranger
+  `_session_id_backup` — httpOnly, Secure, opaque. So the extension asks each site what it
+  gives someone with no account and subtracts that from what you have. github.com gives a
+  stranger `_gh_sess`, `_octo` and `logged_in`; a signed-in user also has `user_session`.
+  That remainder is the account. With nothing ruled out the answer is *unknown*, and
+  unknown is not shown.
 
 Being open in a tab, or high in your top sites, orders the list but never joins it — a
 sign-in page is maximum evidence of attention and zero evidence of an account.

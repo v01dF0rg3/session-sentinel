@@ -1,5 +1,65 @@
 # Changelog
 
+## 0.26.0 — 1 September 2026
+
+### A session cookie is not evidence of an account
+
+Three rules in a row tried to read authentication out of a cookie's name and flags:
+generous name matching, then `httpOnly` as a discriminator, then a list of names that say
+they are not sessions. Each fixed the site that was reported and stayed wrong.
+
+They were wrong in principle. Fetched with no cookies at all, as a stranger with no
+account, bloomberg.com hands back:
+
+```
+_session_id_backup    httpOnly  Secure  36-char opaque value
+```
+
+That is indistinguishable from an authenticated session cookie because it **is** a session
+cookie — an anonymous one, issued before anyone signs in. No rule over names and flags can
+separate the two, because the difference is not in the cookie.
+
+### Ask the site what it gives a stranger, and subtract
+
+Measured, with no cookies attached:
+
+| Site | What a stranger receives |
+| --- | --- |
+| bloomberg.com | `_pxhd`, `session_id`, `_session_id_backup`, `agent_id`, `session_key` |
+| github.com | `_gh_sess`, `_octo`, `logged_in` |
+| x.com | `guest_id`, `guest_id_ads`, `gt`, `personalization_id`, `ct0`, `__cf_bm` |
+
+A jar holding exactly what a stranger gets proves nothing. A signed-in GitHub user also has
+`user_session` and `dotcom_user` — cookies that only exist in response to something a
+stranger cannot do. That remainder is the account.
+
+Two independent sources rule cookies out, and they combine rather than override:
+
+- **Asking the site**, credentials omitted, cached per domain. Settles sites the user was
+  already signed into when the extension was installed.
+- **First sight**: whatever a domain already had the first time it was scanned. It predates
+  anything we could have watched, so it proves nothing — and it catches what one homepage
+  fetch misses, such as eBay's `nonsession`, which arrives deeper than the front page.
+
+**With neither available the answer is `unknown`, and unknown is not shown.** Getting that
+order wrong is the original bug in a new costume: with nothing to subtract, every cookie
+survives the subtraction and every site looks signed in. A test pins it.
+
+### It reports which method is actually working
+
+`Set-Cookie` is a forbidden response header, and whether Chrome exposes it to an extension
+through `getSetCookie()` is a fact about a real browser rather than something to reason
+about — reasoning about it is what produced the last three fixes.
+
+**Settings → Check it works → Why these sites are listed** now measures it against
+github.com, whose anonymous cookies are known, and says either which names came back or
+that this browser will not allow it and first-sight baselines are carrying the work alone.
+
+### Also
+
+- 138 tests (up from 130). The `anon-baseline` fixtures are real measurements, not invented
+  cookie names.
+
 ## 0.25.0 — 1 September 2026
 
 ### The fix in 0.24.0 could not reach anyone

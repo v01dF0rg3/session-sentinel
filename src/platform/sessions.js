@@ -19,6 +19,7 @@ import { looksLikeSessionCookie, sessionEvidence } from '../core/risk.js';
  * @property {number} sessionCookieCount Cookies that look auth-bearing.
  * @property {number} strongCount Cookies that look like real auth tokens.
  * @property {number} moderateCount
+ * @property {string[]} authNames Names of the cookies that look session-bearing.
  * @property {boolean} signedIn Confident the user has an account here.
  * @property {boolean} hasHostOnlySecure
  * @property {number} lastAccessHint Best-effort recency for sorting.
@@ -48,6 +49,7 @@ export async function discoverSessions() {
         sessionCookieCount: 0,
         strongCount: 0,
         moderateCount: 0,
+        authNames: [],
         signedIn: false,
         hasHostOnlySecure: false,
         lastAccessHint: 0
@@ -63,6 +65,7 @@ export async function discoverSessions() {
     const evidence = sessionEvidence(cookie);
     if (evidence === 'strong') entry.strongCount += 1;
     else if (evidence === 'moderate') entry.moderateCount += 1;
+    if (evidence === 'strong' || evidence === 'moderate') entry.authNames.push(cookie.name);
     if (cookie.secure && cookie.httpOnly) entry.hasHostOnlySecure = true;
     // Session cookies (no expiry) are a strong signal of an active login.
     if (cookie.expirationDate === undefined) entry.sessionCookieCount += 1;
@@ -71,8 +74,10 @@ export async function discoverSessions() {
     }
   }
 
-  // One unmistakable auth cookie, or two near-misses. Anything less is a site that set a
-  // cookie while the user read a page, not one they have an account on.
+  // One unmistakable auth cookie, or two near-misses. This is a *candidate* test, not a
+  // conclusion: bloomberg.com passes it while handing the same cookies to strangers, so
+  // whether a candidate is really an account is settled in core/anon-baseline.js against
+  // what the site gives someone with no account at all.
   for (const entry of sites.values()) {
     entry.signedIn = entry.strongCount > 0 || entry.moderateCount >= 2;
   }
