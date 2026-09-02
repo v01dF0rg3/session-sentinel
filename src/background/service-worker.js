@@ -32,6 +32,10 @@ import { knownChangePasswordSupport, probeChangePassword } from '../platform/cha
 import { baselineOnVisit, recordFirstSight } from '../platform/first-sight.js';
 import { observedLogins, recordLoginEvent } from '../platform/login-events.js';
 import { signInCompletedFor } from '../core/oauth-return.js';
+import { readPageEvidence } from '../core/page-signals.js';
+import { collectPageEvidence } from '../engine/page-probe.js';
+import { getPageVerdicts, recordPageVerdict } from '../platform/page-verdict.js';
+import { sessionEvidence } from '../core/risk.js';
 import { getVerdicts, setVerdict } from '../platform/site-verdict.js';
 import { judgeSignIn } from '../core/anon-baseline.js';
 
@@ -483,6 +487,7 @@ async function relevanceSignals(settings, sessions) {
   const { sight, added } = await recordFirstSight(candidates);
   const verdicts = await getVerdicts();
   const seenSignIn = await observedLogins();
+  const pageSaid = await getPageVerdicts();
 
   /** @type {Set<string>} */
   const signedIn = new Set();
@@ -511,8 +516,18 @@ async function relevanceSignals(settings, sessions) {
     // match - which the candidate filter above already guarantees. That is the difference
     // from the cache this project removed: the record can promote a site, never keep one
     // listed after the evidence for it is gone.
-    if (seenSignIn.has(site.domain) || judgeSignIn(site.authNames, everSeen) === 'signedIn') {
+    const said = pageSaid[site.domain];
+    if (
+      said === 'signedIn' ||
+      seenSignIn.has(site.domain) ||
+      judgeSignIn(site.authNames, everSeen) === 'signedIn'
+    ) {
       signedIn.add(site.domain);
+    } else if (said === 'anonymous') {
+      // The site offered to sign them in and nowhere offered to sign them out. That is the
+      // only thing short of the user's own word that may remove a question rather than
+      // answer it, and it is what finally settles sites like bloomberg.com.
+      continue;
     } else unconfirmed.add(site.domain);
   }
 
@@ -569,8 +584,70 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   // A page load is also when a site can still be seen as it looks to someone not yet
   // signed in. Baselining here lets an ordinary sign-in confirm itself with no question.
   const host = hostnameFromUrl(tab.url);
-  if (host) void baselineOnVisit(registrableDomain(host));
+  if (!host) return;
+
+  const domain = registrableDomain(host);
+  void baselineOnVisit(domain);
+
+  // And the page itself may simply say. A site shows "Sign out" only to someone with a
+  // session to end, which settles the one case nothing else can reach: an account that
+  // predates the extension, visited without ever signing out and back in.
+  void askPageIfSignedIn(tabId, domain);
 });
+
+/**
+ * Ask the page whether the user is signed in, for sites nothing else has settled.
+ *
+ * This is the last gap. A site the user was already signed into before installing has no
+ * transition to observe and no federated round trip to catch — but its pages are, right
+ * now, showing "Sign out" to them. The site states the answer; it just has to be read.
+ *
+ * Bounded deliberately. It runs only for a domain that holds session-looking cookies AND
+ * has not already been settled, at most once per service-worker lifetime, and never again
+ * once an answer is recorded. A confirmed account is never inspected again.
+ *
+ * @param {number} tabId
+ * @param {string} domain
+ */
+async function askPageIfSignedIn(tabId, domain) {
+  if (probedThisSession.has(domain)) return;
+  probedThisSession.add(domain);
+
+  try {
+    const settled = await getPageVerdicts();
+    if (settled[domain]) return;
+
+    const cookies = await chrome.cookies.getAll({ domain });
+    const hasAuthCookies = cookies.some((cookie) => {
+      const evidence = sessionEvidence(cookie);
+      return evidence === 'strong' || evidence === 'moderate';
+    });
+    // No session-looking cookies means there is nothing this could confirm, and inspecting
+    // the page would be looking at something that is none of our business.
+    if (!hasAuthCookies) {
+      probedThisSession.delete(domain);
+      return;
+    }
+
+    const [frame] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: collectPageEvidence
+    });
+    if (!frame?.result) return;
+
+    const verdict = readPageEvidence(frame.result);
+    if (verdict !== 'unknown') await recordPageVerdict(domain, verdict);
+  } catch {
+    // A page that refuses injection - the Chrome Web Store, a PDF viewer, a page still
+    // navigating - simply stays a question.
+    probedThisSession.delete(domain);
+  }
+}
+
+/** @type {Set<string>} */
+const probedThisSession = new Set();
+
+
 
 /** Keep Chrome's idle threshold in step with the configured timeout. */
 async function applyIdleInterval() {

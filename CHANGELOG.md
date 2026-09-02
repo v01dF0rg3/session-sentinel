@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.30.0 — 2 September 2026
+
+### Visiting a site you are already signed into now confirms it
+
+The last gap, and the one nothing else could reach. A sign-in is normally caught as a
+cookie that was not there before, or as a federated round trip — but an account that
+predates the extension has neither. Visiting it proved nothing, even though the page was,
+at that moment, displaying the answer.
+
+**The site says so.** It shows "Sign out" only to someone with a session to end, and
+"Sign in" only to someone without one. That is not another guess about cookie-naming
+conventions; it is the site stating the answer in words, for the user's own benefit.
+
+So a page load on an unsettled site is read for sign-in and sign-out affordances. Found a
+sign-out control — including one inside an account menu that is present but hidden, which
+is how most sites build them — and the account is confirmed with nothing to answer.
+
+**Deliberately asymmetric.** A sign-out control confirms. Nothing short of "sign-in offered
+and sign-out absent anywhere" may dismiss, because a menu that renders only when opened
+shows neither, and a signed-in user can be sitting on a password-change form. A wrong
+dismissal hides a real account, which is the one error this must never make.
+
+**Bounded.** It runs only for a domain that holds session-looking cookies and has not been
+settled, at most once per service-worker lifetime, and never again after an answer is
+recorded. A confirmed account is never inspected. A domain with no session cookies is
+skipped outright — there would be nothing to confirm, and looking would be none of our
+business. The injected half counts elements and returns four numbers; the judgement happens
+in `core/`, where it is tested without a browser, and no page content ever leaves the page.
+
+Measured against real pages rather than assumed: a hidden `/logout` link in a closed menu
+reads as signed in; github.com signed out reads as anonymous; bloomberg.com reads as
+unknown and stays a question rather than being wrongly confirmed.
+
+### Also
+
+- The user's own **Yours? Yes / No** still outranks everything the extension observes. When
+  a person and a heuristic disagree, the person wins.
+- 174 tests (up from 165).
+
 ## 0.29.0 — 2 September 2026
 
 ### A federated sign-in now confirms itself too
