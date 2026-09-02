@@ -2,365 +2,308 @@
 
 [![tests](https://github.com/v01dF0rg3/session-sentinel/actions/workflows/test.yml/badge.svg)](https://github.com/v01dF0rg3/session-sentinel/actions/workflows/test.yml)
 
-A Manifest V3 Chrome extension that ends your web sessions — on demand, after inactivity,
-when the screen locks, or when the browser closes.
-
-It works out of the box. Install it, accept the permission prompt, and it protects your
-high-risk accounts with no configuration.
-
-## Which sites it shows you
-
-The cookie jar knows every domain that has ever set an auth-looking cookie. On a real
-profile that is a couple of hundred, and almost none of them are accounts you have.
-
-So two questions are kept apart, deliberately:
-
-- **What should be cleared?** Answered generously. Missing a session cookie leaves a live
-  token behind, so anything that might carry one is in scope.
-- **What should be shown?** A session cookie is not evidence of an account: fetched with no
-  cookies at all, bloomberg.com hands a stranger `_session_id_backup` — httpOnly, Secure,
-  opaque. So a cookie counts only if it *arrived after this extension first saw the site*.
-  An anonymous session cookie is issued on first contact and then sits there; an
-  authenticated one may appear—or the site may upgrade the same opaque session—when you
-  sign in.
-
-  Sites you were already signed into before installing cannot be separated that way, and no
-  rule over cookie names can do it either. Those rows sit behind **Log in to pre-existing
-  accounts**. **Login** opens the site and activates its own sign-in route. If the site
-  already shows an authenticated account—or after the login completes—it moves into
-  Confirmed accounts automatically. Every unresolved site stays out. **Not mine** remains
-  optional queue cleanup.
-
-Being open in a tab, or high in your top sites, orders confirmed accounts but never joins
-that set — a sign-in page is maximum evidence of attention and zero evidence of an account.
-The recovery checklist consumes the same confirmed set, so turning on visit-frequency
-ordering cannot promote Bloomberg, eBay, or any other unanswered site into an account.
-
-If a site is listed that is not yours, **Settings → Check it works → Why these sites are
-listed** names the exact cookie that caused it.
+Session Sentinel is a Chrome extension that helps you sign out of accounts quickly. You can
+run it yourself, or have it act after inactivity, when your screen locks, or when Chrome
+closes.
+
+It is designed for the moment when speed matters: you think your computer or an account may
+be compromised and you want to begin securing your sessions now.
+
+> **Important:** Session Sentinel is a security and recovery aid, not antivirus. No browser
+> extension can guarantee that a token already stolen by malware has been revoked. If you
+> suspect malware, use a known-clean device for account recovery whenever possible.
+
+## Why I made Session Sentinel
 
-Unanswered candidates and cleanup-only sites have separate disclosures. A site explicitly
-marked Keep remains visible in its own section so that choice can be reversed, but Keep is
-not treated as proof of authentication. The total stays on screen and the filter still
-searches all of it, but **Log out of confirmed accounts** acts only on the confirmed set.
-Scheduled safety wipes retain their deliberately generous cookie-candidate scope.
-
-There is no Bloomberg rule or domain deny-list in this decision. The same invariant applies
-to every domain: an anonymous-looking or otherwise unresolved cookie candidate cannot enter
-Confirmed accounts or recovery merely because the site is open or frequently visited.
-
-The answer is re-derived from the cookie jar every time the list is read, never cached. An
-earlier version remembered its own verdicts and made its own mistakes permanent — a site
-judged signed in under a rule later found wrong stayed listed regardless. Cleanup history is
-not account evidence either: a broad run also acts on false positives, so remembering that
-action would preserve the same guess under another name.
-
-This is not `chrome.history`: history tells you what pages you opened, which cannot
-distinguish a news article from an inbox, and is a great deal to ask for to answer a
-question about domains.
-
-## What it cannot do, stated up front
-
-It cannot make a website revoke your other sessions. Nothing installed in a browser can.
-
-An extension may only do what a person at the keyboard may do, and "sign out everywhere"
-is a button most sites simply have not built. The mechanisms that could change that —
-[Shared Signals / RISC](https://openid.net/wg/sse/), CAEP, device-bound session
-credentials — are either server-to-server or live inside the browser itself. There is no
-protocol by which a site grants an extension that power, and inventing one would mean
-shipping a spec no site implements.
-
-So the promise is a ladder, not a guarantee. The extension climbs as high as each site
-allows and then tells you which rung it reached:
-
-| Rung | What happened | How often |
-| --- | --- | --- |
-| 1. Cleared | Session material destroyed on this device | Always |
-| 2. Signed out | The site's own sign-out ran, ending the session server-side | Often |
-| 3. Revoked | Every session, everywhere, ended | Only where the site offers it |
-
-A result is never reported stronger than the evidence for it. Clearing cookies without
-reaching rung 2 *orphans* a session rather than ending it: the token stays alive and
-listed on the site, you just can no longer see it. The report says so in those words.
-
-### When rung 3 is missing
-
-On most stacks, **changing your password is the revocation** — it is what invalidates
-sessions on devices you no longer hold. It is the only universal primitive that actually
-exists, so it is what the "Been hacked?" walkthrough is built around.
-
-Finding that page used to depend on a hand-written table of two dozen domains. It now also
-uses [`/.well-known/change-password`](https://w3c.github.io/webappsec-change-password-url/),
-a deployed convention that lets a site point at its own password page. Measured against 30
-popular domains: **11 serve it**, 14 return a clean 404, and 5 answer `200` for URLs that
-cannot exist — those last are refused rather than guessed at, because sending you to a
-soft-404 page during a break-in is worse than admitting we do not know.
-
-That is not most of the web. It is a third of it, for free, on top of the curated list —
-and the honest framing is that the remainder still needs you to find the security settings
-yourself, which the walkthrough will say rather than pretend otherwise.
-
-## Loading it
+I made Session Sentinel after malware compromised my Windows computer and stole my browser
+session tokens, including my Discord token. A session token is the proof a website uses to
+remember that you are signed in; someone who steals a valid token may be able to enter the
+account without typing your password. The attacker gained access to my Discord account,
+Riot Games account, and many others.
+
+During an attack like that, every minute matters. I needed a fast way to start ending
+sessions without searching through every website one at a time. I also needed to know which
+sites had really signed me out and which had only removed data from my computer.
+
+If I had had a tool like this, I could have started securing my sessions sooner, before the
+attacker reached as many of my accounts. I am building Session Sentinel so other people
+have more options, clearer information, and a guided place to start when they know they are
+being hacked.
 
-1. Open `chrome://extensions`
-2. Turn on **Developer mode**
-3. **Load unpacked** → select this folder
+## What it does
+
+- Shows **confirmed accounts** first instead of treating every website cookie as a login.
+- Opens uncertain sites so you can log in—or confirm that you are already logged in—with
+  very little manual work.
+- Tries to use each website's real sign-out process, then clears its local session data.
+- Can act automatically after inactivity, screen lock, sleep, or browser close.
+- Explains whether an account was signed out or only cleared from this computer.
+- Provides a **Been hacked?** checklist that starts with the accounts that can unlock all
+  your other accounts.
+- Lets you mark sites **Never clear this site** when you want them left alone.
 
-No build step. The source is plain ES modules and loads as-is.
-
-A setup page opens on first install. **Until you finish it, no automatic trigger will
-fire** — not on browser close, not on idle, not on screen lock. It shows the sites that
-would actually be affected, read from your real cookies, and lets you exempt any of them
-before anything runs. Manual logout works immediately; the gate is about surprise, not
-about withholding the feature.
+Session Sentinel does not upload a list of your accounts or browsing activity.
 
-## What it actually does
-
-"Log out of confirmed accounts" can produce three different results, and the extension
-distinguishes them in every report rather than painting everything green:
+## What “logged out” really means
 
-| Result | Meaning |
-|---|---|
-| **revoked** | The site confirmed it killed sessions on your other devices too. Only claimed by recipes whose behaviour has been verified on a second device — **none are, yet** |
-| **signed out** | This browser's session was ended server-side; other devices unknown |
-| **cleared locally** | Cookies and storage deleted here. A token stolen earlier may still work elsewhere |
-| **failed** | Could not do even that |
+Websites do not provide one universal “sign out everywhere” button for extensions. Session
+Sentinel goes as far as each site allows and reports the result honestly.
 
-A partial result says so: if a deep wipe cleared cookies but Chrome refused to clear
-IndexedDB, the report names what survived instead of reporting a clean sweep.
+| Result | What it means |
+| --- | --- |
+| **Revoked** | The site confirmed that sessions on other devices were ended too. This is rare and is only claimed when verified. |
+| **Signed out** | The website ended this browser's session on its server. Other devices may still be signed in. |
+| **Cleared locally** | Cookies and site data were deleted from this computer. A token already copied by an attacker may still work. |
+| **Failed** | Session Sentinel could not complete even the local cleanup. |
 
-Deleting cookies defeats *local* session hijacking — malware or another user reading your
-cookie jar. It does nothing about a token already exfiltrated to an attacker's machine.
-Only the first two rows do that, and only where the site provides the means.
+Clearing a cookie is useful, but it is not always revocation. If an attacker already copied
+the token, use the website's session-management page or change the password. Many websites
+invalidate old sessions after a password change, but their behavior varies.
 
-## How server-side logout works
+## If you believe you are being hacked now
 
-Replaying a captured logout request does not work: CSRF tokens rotate, and a `fetch()`
-from the extension origin is cross-site, so `SameSite` cookies are never attached.
+1. **Move to a known-clean device if possible**, such as another computer or phone you
+   trust. An extension running on an infected computer cannot make that computer safe.
+2. **Secure your main email and sign-in accounts first**, such as Google, Microsoft, or
+   Apple. Attackers can use them to reset the passwords for everything else.
+3. Open Session Sentinel and select **Been hacked?** to work through the guided account
+   list.
+4. Use each site's security page to revoke unknown sessions or sign out other devices.
+5. Change exposed passwords and do not reuse the same password across sites.
+6. Turn on two-step verification (multi-factor authentication) or passkeys, and replace
+   recovery codes that may have been exposed.
+7. Remove the malware—or reinstall Windows—before trusting the affected computer again.
 
-Instead the extension opens a **background tab on the site's own origin** and drives
-the site's own controls. A click inside the page carries the live CSRF token, the right
-`Origin`/`Referer`, and every cookie. Four tiers are tried in order:
+Using **Log out of confirmed accounts** is a useful first response, but it does not replace
+these recovery steps.
 
-1. **Curated recipe** — for sites with a documented logout URL (`src/core/recipes.js`).
-   Deliberately only three: recipes that clicked at "sign out everywhere" buttons were all
-   removed after the first one checked turned out to be clicking for a control that does
-   not exist
-2. **OIDC RP-initiated logout** — discovered from `/.well-known/openid-configuration`;
-   generic coverage for anything behind Okta, Entra, Auth0, and friends
-3. **Heuristic** — find and click whatever reads as a logout control
-4. **Local destruction** — always runs, whatever happened above
+## Install from this repository
 
-Recipes are **data, never code**. The interpreter ships inside the extension and nothing is
-`eval`'d, so the recipe table can later be fetched as a signed remote bundle without
-breaking the Web Store's remote-code rule.
+Session Sentinel currently loads directly from its source folder. You do not need to
+compile anything. Chrome 116 or newer is required.
 
-## Defaults
+1. [Download Session Sentinel as a ZIP](https://github.com/v01dF0rg3/session-sentinel/archive/refs/heads/main.zip),
+   then choose **Extract all** when the download finishes.
+2. Open `chrome://extensions` in Chrome.
+3. Turn on **Developer mode**.
+4. Select **Load unpacked**.
+5. Choose the extracted folder containing `manifest.json`.
+6. Complete the setup page that opens, then pin Session Sentinel to the toolbar if desired.
 
-| Trigger | Default |
-|---|---|
-| Browser closes | On, for high and critical sites |
-| Inactivity | On, 30 min, critical sites |
-| Screen lock / sleep | On, for high and critical sites |
-| Contact sites to revoke | On, for high and critical sites |
+Automatic protection stays off until setup is completed, giving you a chance to review the
+affected sites first. Manual actions are available immediately.
 
-Risk tiers are assigned automatically from a bundled classification plus keyword and TLD
-heuristics, so an unlisted bank still lands in the right tier.
+An unpacked extension does not update itself from GitHub. To install a newer version,
+replace the old project folder with the new download and select **Reload** beside Session
+Sentinel on `chrome://extensions`.
 
-Deep wipes (which include IndexedDB and cache storage) are reserved for critical sites.
-Many web apps keep drafts and offline documents in IndexedDB, and a zero-config extension
-that destroys those on every site at browser close would lose someone's work on day one.
+## Using the account list
 
-## If the browser closes during a run
+### Confirmed accounts
 
-Open **Settings → Check it works → Run diagnostics** and look at the **Activity log** at
-the bottom. It records every step of every run and survives browser restarts, so it shows
-exactly where things got to. The key thing to look for is whether `run:complete` appears
-before the next `browser:startup` — that separates "died mid-step" from "finished, and the
-browser went away anyway". **Copy log** puts it on the clipboard.
+These are sites where Session Sentinel found positive evidence of a login. The extension
+may have watched the sign-in happen, found signed-in account controls on the page, or seen a
+new authentication cookie appear.
 
-Open tabs on a cleared site are reloaded automatically, so the signed-out state is visible
-straight away. Turn that off in Settings → Your open tabs if you would rather refresh pages
-yourself.
+The **Log out of confirmed accounts** button acts only on this list. Riskier accounts are
+handled first.
 
-## Coverage
+### Pre-existing account candidates
 
-Settings → **Check it works** → **Coverage** reports how often the extension reaches a
-site's real sign-out rather than only deleting cookies. It counts results as you use it and
-names the sites where nothing worked — those are the ones worth a recipe, chosen by
-evidence rather than intuition.
+Some sites already had session-looking cookies before Session Sentinel was installed. A
+cookie alone cannot prove that you have an account; news sites and shopping sites also give
+cookies to anonymous visitors.
 
-Only sites where a server-side logout was actually attempted count towards the rate.
+Open **Log in to pre-existing accounts** and select **Login** beside a site:
 
-## Checking it works
+1. Session Sentinel opens the real website.
+2. If the page already shows that you are signed in, the site is confirmed automatically.
+3. Otherwise, the extension activates the site's own Login control or opens its usual
+   `/login` page.
+4. After you finish signing in, reopen the popup. The site moves to **Confirmed accounts**
+   when positive login evidence is available.
 
-Settings → **Check it works** → **Run diagnostics**. Fourteen checks that run the real code
-against the real browser APIs and report what works on your machine, with a **Copy report**
-button for sharing the results.
+Selecting Login never confirms an account by itself. If the site still cannot prove the
+login, it remains a candidate. Select **Not mine** only when you want to remove a site from
+the candidate list.
 
-Safe to run at any time: it counts your cookies without reading or deleting them, and the
-only data it clears belongs to a reserved test domain that cannot exist.
+### Other cookied sites
 
-The same page also contains a separate, explicit **Private-store account check**.
-That is not part of the fourteen checks: it contacts only the domain you enter, once, in a
-fresh blank Incognito store and compares cookie names with the normal profile. It refuses
-to run if the private jar is not empty and never exposes cookie values. It is diagnostic:
-matching names prove the name is ambiguous, but not that the normal session is logged out,
-because a site may reuse one cookie name on both sides of sign-in. It saves no verdict and
-does not change the list. Close every Incognito window after a probe to erase its temporary
-site data.
+This section contains websites with local data but no reliable evidence of an account. They
+are not included by the manual **Log out of confirmed accounts** button.
 
-## What clearing cookies does not do
+### Ordering by usage
 
-Deleting a site's cookies does not end your session on the site's side. It **orphans** it:
-the session stays listed as active, and remains usable by anyone who already holds the
-token. Clear GitHub four times and GitHub will show you four abandoned-but-live sessions.
+The optional **Order accounts by how often you use them** setting only changes the order of
+confirmed accounts. Visiting a site frequently never turns it into a confirmed account.
 
-So after every run the result says, per site, what would actually end those sessions:
+## Automatic protection
 
-- Sites with **no bulk revoke at all** — GitHub is a confirmed example — say so plainly, and
-  point out that revoking one at a time or changing your password are the only options.
-- Sites with a **session page** get a direct link to it.
-- Sites with **nothing known** are told the truth: check the security settings, and a
-  password change is usually the only thing that ends sessions elsewhere.
+The default settings are:
 
-No extension can revoke a session on a site that provides no way to do it. Saying which
-sites those are is the next most useful thing.
+| Trigger | Default behavior |
+| --- | --- |
+| Browser closes | High- and critical-risk sites |
+| 30 minutes of inactivity | Critical-risk sites |
+| Screen lock or sleep | High- and critical-risk sites |
+| Contact sites to sign out | High- and critical-risk sites |
 
-## If you have been compromised
+Automatic safety wipes use a broader session-candidate list than the manual confirmed-
+account button. This favors removing suspicious local session data during an automatic
+security event, but it can sign you out of a site that was not shown as a confirmed account.
 
-The popup's **Been hacked?** link opens an ordered walkthrough of every account worth
-securing, grouped by blast radius rather than by risk score. Email and identity providers
-come first — every other account can be reset through them, so anything fixed before those
-can simply be taken again. Then money, then infrastructure, then social.
+Use **Never clear this site** for music players, work dashboards, home-control pages, or
+anything else that should survive automatic cleanup. You can still use that site's
+individual **Log out** or **Clear data** button later.
 
-It links straight to each password page where one is known, notes where one password change
-covers several accounts, and keeps your place across browser restarts. Nothing on that page
-logs you out of anything: if someone else holds a live session, logging yourself out
-surrenders the session you control and leaves theirs running.
+Deep cleanup, including IndexedDB and cache storage, is limited to critical sites by
+default. Clearing those storage types everywhere could destroy offline drafts or locally
+saved work.
 
-## Sites that share a sign-in
+## Shared sign-ins
 
-Some sites cannot be logged out on their own. YouTube's session is issued by Google, so
-clearing YouTube alone achieves nothing — the next visit gets a fresh session from the
-Google login that is still active. Instagram sits behind Facebook the same way, and Outlook
-behind Microsoft.
+Some sites share one identity. YouTube uses a Google session, Instagram may depend on
+Facebook, and Outlook uses Microsoft. Clearing only the first site may let the identity
+provider sign it straight back in.
 
-Session Sentinel clears these as a group, limited to the sites you are actually signed into,
-and tells you which ones came along. If you have marked one of them **never clear**, it says
-so, because that site will sign the others back in.
+Session Sentinel groups known shared identities when the related accounts are confirmed
+and explains which sites were included. A site marked **Never clear** is still respected.
 
-## Keeping a site signed in
+## Check that it works on your computer
 
-Some sites you never want logged out — YouTube, a music player, a home dashboard. Tick
-**Never clear this site** in the popup (it sits right under the current site's name) and
-that site is skipped by every automatic trigger *and* by **Log out of confirmed accounts**.
-The big button deliberately does not override it.
+Open **Settings → Check it works → Run diagnostics**. The diagnostics exercise the browser
+features Session Sentinel relies on and report what actually works in your installed copy.
 
-Each row in the signed-in list has the same control as a **Keep** checkbox, and the options
-page exposes it as the *never clear* handling mode. Kept sites are counted in the popup so
-you can see at a glance what the next run will leave alone.
+The check is safe to run: it reads the cookie list without deleting it, and cleanup tests
+use a reserved test domain that cannot be a real website. Cookie values are not displayed
+or copied.
 
-You can still clear a kept site deliberately — the per-site **Log out** and **Clear data**
-buttons always work. Keeping a site protects it from automation, not from you.
+The same page includes:
 
-## Privacy
+- **Coverage**, which measures how often real website sign-out succeeds instead of only
+  clearing local data.
+- **Activity log**, which shows whether a run completed or Chrome stopped it partway
+  through.
+- **Why these sites are listed**, which identifies the cookie name that made a domain a
+  candidate.
+- An optional **Private-store account check** for comparing one site's cookie names with a
+  fresh Incognito visit. Close every Incognito window afterward to erase its temporary
+  data.
 
-- No account, no telemetry, no analytics, no network destination for anything it observes
-- All state in `chrome.storage.local`
-- The site list is derived from your own cookie jar and never leaves the machine
+If something unexpected happens, use **Copy report** and include it in a
+[GitHub issue](https://github.com/v01dF0rg3/session-sentinel/issues).
 
-`<all_urls>` is requested at install because the alternative — per-site permission grants —
-means the extension silently does nothing on sites you never approved, which is a worse
-security outcome than a single honest prompt.
+## Privacy and permissions
 
-## Tests
+- No Session Sentinel account is required.
+- No telemetry or analytics is collected.
+- Account decisions and settings stay in Chrome's local extension storage. Short-lived
+  Login-tab tracking stays in session storage and expires after 30 minutes.
+- The extension does not request browsing-history access.
+- Optional top-sites access is used only when you enable usage-based ordering.
+- Optional recipe updates request one complete signed bundle; they do not query a server
+  once per account or upload your site list.
 
-Two suites, because the risky code splits in two.
+Chrome shows an **access to all sites** warning because Session Sentinel must be able to
+inspect account controls, run a site's sign-out, and clear session data on whatever sites
+you use. Asking for permission one site at a time would leave unapproved accounts
+unprotected without making that failure obvious.
 
-**Decision logic** — risk classification, domain parsing, the planner that decides what
-gets destroyed, and the navigation trust policy. No `chrome.*` calls, so it runs in plain
-node:
+See [PRIVACY.md](PRIVACY.md) for the full privacy policy and [STORE.md](STORE.md) for the
+permission justifications.
+
+## Technical details
+
+The remainder is for contributors and security reviewers. You do not need it to use the
+extension.
+
+### How website sign-out works
+
+Replaying a previously captured logout request is unreliable because CSRF tokens rotate
+and cross-site requests do not receive the right `SameSite` cookies.
+
+Session Sentinel instead borrows an existing Chrome window, opens a background tab on the
+site's own origin, and tries these steps in order:
+
+1. A curated, declarative logout recipe when one has been verified.
+2. OIDC RP-initiated logout discovered from the site's standard configuration.
+3. A generic search for the site's own visible logout control.
+4. Local cookie and storage destruction, which always runs.
+
+No window is created or closed. Open tabs on a cleared site can be reloaded so the signed-
+out state is visible immediately.
+
+Recipes are data, not remote code. Their interpreter ships inside the extension, navigation
+is restricted to the intended site or a known identity provider, and downloaded bundles
+must pass signature, version, schema, and navigation checks.
+
+### Tests
+
+Run the Node test suite:
 
 ```bash
 npm test
 ```
 
-**Injected page logic** — `pageStep`, the function that runs inside real pages and does the
-clicking. It needs a DOM, so it runs in a browser:
+Run the browser test harness:
 
 ```bash
 node dev/server.mjs 5599
 ```
 
-Then open `http://localhost:5599/dev/step-runner.test.html` — 15 assertions, PASS/FAIL
-inline. These exist because of a real bug: an early version clicked a decoy button hidden
-with the standard screen-reader pattern (`width:0;height:0;overflow:hidden`) and reported
-success. Padding gives such an element a non-zero box, so no CSS check rules it out
-reliably. The runner now prefers the innermost, largest, hit-testable match, and refuses to
-click anything sitting under an overlay.
+Then open `http://localhost:5599/dev/step-runner.test.html`. The same server hosts UI
+previews at `dev/popup-preview.html` and `dev/options-preview.html`.
 
-The same server hosts UI previews with a stubbed `chrome.*` API:
-`dev/popup-preview.html` and `dev/options-preview.html`.
+### Project layout
 
-## Layout
-
-```
-src/core/       pure logic - no chrome.* anywhere, unit-testable in node
-src/platform/   the only place chrome.* is touched
-src/engine/     orchestration: tier selection, execution, verification, reporting
-src/background/ event wiring (triggers)
-src/ui/         popup and options
-data/           bundled risk classification
+```text
+src/core/       Pure decision logic; no chrome.* APIs
+src/platform/   Chrome API access and persisted browser state
+src/engine/     Logout execution, verification, and reporting
+src/background/ Browser events and message handling
+src/ui/         Popup, settings, diagnostics, and recovery pages
+data/           Bundled risk classification
+dev/            Local test harness and development utilities
 ```
 
-The rule that keeps this extensible: `core/` never imports `chrome`. A future Firefox
-target, or a second security module, plugs in behind `platform/` without a rewrite.
+The central boundary is that `src/core/` never imports `chrome`. Browser integrations sit
+behind `src/platform/`, keeping decision logic testable and leaving room for a future
+Firefox adapter.
 
-## Icons
+### Icons
 
 ```bash
 npm run icons
 ```
 
-Regenerates all four sizes from [dev/make-icons.mjs](dev/make-icons.mjs), a dependency-free
-PNG encoder. The artwork is defined in normalised coordinates so every size matches, and
-the 16px favicon is hinted separately for legibility.
+This regenerates all icon sizes from [dev/make-icons.mjs](dev/make-icons.mjs).
 
-## Signing keys
+### Signing keys
 
-The recipe bundle signing key lives **outside this repository**, at
-`~/.session-sentinel/keys` by default (override with `SENTINEL_KEY_DIR`). A `.gitignore`
-entry is one `git add -f` away from failing and this repo is public; the key is the trust
-anchor for the whole update channel, so distance beats a rule.
+The recipe-bundle signing key lives outside this repository at
+`~/.session-sentinel/keys` by default. Set `SENTINEL_KEY_DIR` to override that location.
 
-## Documentation
+### Security boundaries
 
-| | |
-|---|---|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Design rationale, the constraints behind each decision, roadmap |
-| [TESTING.md](TESTING.md) | All three test layers, including the manual smoke test |
+Three attacker-influenced inputs are constrained:
+
+- OIDC logout destinations must remain on the target site or a short identity-provider
+  allowlist, and redirects are checked again after landing.
+- Recipes cannot navigate away from the site they claim to sign out of, even when the
+  recipe bundle is correctly signed.
+- Recipe updates require an ECDSA P-256 signature from the pinned key, cannot roll back to
+  an older version, and are revalidated before installation. Failure keeps the built-in
+  recipes in place.
+
+These boundaries are exercised by [tests/trust.test.mjs](tests/trust.test.mjs) and
+[tests/bundle.test.mjs](tests/bundle.test.mjs).
+
+## More documentation
+
+| Document | Purpose |
+| --- | --- |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Design constraints, rationale, and roadmap |
+| [TESTING.md](TESTING.md) | Automated tests and manual browser checks |
 | [PRIVACY.md](PRIVACY.md) | Privacy policy |
-| [STORE.md](STORE.md) | Web Store submission notes and permission justifications |
-| [CHANGELOG.md](CHANGELOG.md) | What changed and why |
-
-## Security posture
-
-Three inputs to this extension are attacker-influenced, and all are constrained:
-
-- **A site's OIDC discovery document** names where to go to log out — and is served by the
-  site being logged out. Navigation is restricted to the target site or a short allowlist
-  of identity providers, checked before navigating and again after landing, because a
-  trusted endpoint can redirect.
-- **Recipes** cannot navigate off the site they claim to log out of — including recipes
-  from a correctly signed remote bundle. A signature proves authorship, not correctness.
-- **The update channel** verifies an ECDSA P-256 signature against a pinned key before the
-  payload is treated as anything, refuses version rollbacks, re-validates every recipe, and
-  fails closed to the recipes that shipped in the extension.
-
-Covered by [tests/trust.test.mjs](tests/trust.test.mjs) and
-[tests/bundle.test.mjs](tests/bundle.test.mjs), which sign real payloads with real keys and
-then attack them.
-
-Recipe updates are **off by default** and fetch the whole list in one request — never
-queried per domain, because such a request would leak which sites you use.
+| [STORE.md](STORE.md) | Chrome Web Store notes and permission explanations |
+| [CHANGELOG.md](CHANGELOG.md) | Release history |
