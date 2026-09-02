@@ -29,7 +29,6 @@ import { clearCoverage, readCoverage } from '../platform/coverage.js';
 import { summariseCoverage } from '../core/coverage.js';
 import { partitionSites } from '../core/relevance.js';
 import { knownChangePasswordSupport, probeChangePassword } from '../platform/change-password.js';
-import { clearObservedLogins, observedLogins, recordSignedIn } from '../platform/login-watch.js';
 
 const RECIPE_ALARM = 'sentinel-recipe-refresh';
 
@@ -268,15 +267,8 @@ async function handleMessage(message) {
       await clearCoverage();
       return { ok: true };
 
-    // Both records describe the user rather than the extension, so the control that
-    // forgets one forgets the other. Leaving a list of every site they have signed into
-    // behind a button labelled "clear" would be exactly the wrong surprise.
     case 'explainSignedIn':
       return explainSignedIn();
-
-    case 'clearObservedLogins':
-      await clearObservedLogins();
-      return { ok: true };
 
     case 'getEventLog':
       return readLog();
@@ -441,14 +433,20 @@ async function relevanceSignals(settings, sessions) {
   const frequent = settings.useVisitFrequency ? await getFrequentDomains() : new Set();
   const acted = new Set((await readCoverage()).map((entry) => entry.domain));
 
-  // Two routes to the same conclusion. The cookie jar answers "is there an auth token here
-  // right now", which misses a site whose cookies this extension just cleared; the
-  // observed record answers "did a sign-in happen here", which survives that. Together
-  // they keep a site on the list across the logout that removed the evidence for it.
-  const fromCookies = sessions.filter((session) => session.signedIn).map((s) => s.domain);
-  await recordSignedIn(fromCookies);
-
-  const signedIn = new Set([...fromCookies, ...(await observedLogins())]);
+  // Live evidence only, deliberately.
+  //
+  // An earlier version also kept a permanent record of every domain ever judged signed in,
+  // so a site would survive the logout that removed the cookies proving it. That made a
+  // heuristic mistake immortal: ebay.com was written in under a rule that mistook
+  // `nonsession` for an auth cookie, and it stayed on the list after the rule was fixed,
+  // because nothing ever re-checked it. Every site misjudged in that window was frozen the
+  // same way. A cached judgement is only as good as the judgement, and this one had no
+  // way to change its mind.
+  //
+  // Surviving our own wipe was the record's only real justification, and `acted` already
+  // covers exactly that: it records what this extension DID, not what it concluded, so it
+  // cannot be wrong in the same way.
+  const signedIn = new Set(sessions.filter((session) => session.signedIn).map((s) => s.domain));
 
   return { signedIn, open, frequent, acted };
 }

@@ -41,7 +41,7 @@
 
 /** @type {Settings} */
 export const DEFAULT_SETTINGS = {
-  version: 5,
+  version: 6,
   enabled: true,
 
   // False until the welcome screen has been acknowledged. Automatic triggers are held

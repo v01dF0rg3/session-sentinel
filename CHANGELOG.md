@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.25.0 — 1 September 2026
+
+### The fix in 0.24.0 could not reach anyone
+
+ebay.com kept saying "shown because you are signed in here" after the rule that put it
+there was corrected — and so did every other site misjudged in that window.
+
+0.23.0 added a permanent record of every domain ever judged signed in, so a site would
+survive the logout that removes the cookies proving it. The popup unioned that record with
+live cookie evidence. Nothing ever re-checked an entry, so a heuristic mistake became
+immortal: eBay was written in while `nonsession` still counted as an auth cookie, and
+stayed listed forever after.
+
+A cached judgement is only as good as the judgement, and this one had no way to change its
+mind. **The record is gone.** The signed-in set is now derived from the cookie jar on every
+read, so correcting a rule actually reaches the user.
+
+Surviving our own wipe was the record's only real justification, and it was already covered:
+`acted` lists sites this extension has signed the user out of. That records what the
+extension *did*, not what it *concluded*, so it cannot be wrong in the same way.
+
+Settings v6 deletes the stored key on upgrade. Deleting the code is not enough — the stale
+answers lived in storage, and would have kept being read.
+
+A test now pins the invariant directly: a domain judged signed in must stop being judged so
+the moment the cookie behind it changes.
+
+### Also
+
+- 130 tests (up from 128), including the eBay cookie set end to end.
+
 ## 0.24.0 — 1 September 2026
 
 ### ebay.com was on a list headed SIGNED IN, on the sign-in page, with no account

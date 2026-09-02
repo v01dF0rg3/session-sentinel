@@ -32,11 +32,15 @@ Everything else collapses behind **"Show N other sites with sign-in cookies"**. 
 display split, not a change of scope: the total stays on screen, the filter still searches
 all of it, and "Log out of all sessions" still clears all of it.
 
-Sign-ins are remembered — registrable domain and timestamp, nothing else, capped at 800 and
-never leaving the machine — so a site stays listed after the extension has cleared the very
-cookies that proved it. This is not `chrome.history`: history tells you what pages you
-opened, which cannot distinguish a news article from an inbox, and is a great deal to ask
-for to answer a question about domains.
+The answer is re-derived from the cookie jar every time the list is read, never cached. An
+earlier version remembered its own verdicts and made its own mistakes permanent — a site
+judged signed in under a rule later found wrong stayed listed regardless. A site the
+extension has signed you out of stays listed on the strength of what it *did*, which is a
+record of an action rather than of a guess.
+
+This is not `chrome.history`: history tells you what pages you opened, which cannot
+distinguish a news article from an inbox, and is a great deal to ask for to answer a
+question about domains.
 
 ## What it cannot do, stated up front
 

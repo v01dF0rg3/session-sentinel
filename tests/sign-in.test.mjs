@@ -164,3 +164,36 @@ test('two near-misses are enough, one is not', async () => {
   const [pair] = await discoverSessions();
   assert.equal(pair.signedIn, true);
 });
+
+test('a site whose only session-ish cookie is an anonymous one is not signed in', async () => {
+  // The eBay case, end to end. `nonsession` is httpOnly, Secure and long — everything a
+  // real auth cookie looks like except what it means.
+  fakeJar([
+    jarCookie('.ebay.com', 'nonsession'),
+    jarCookie('.ebay.com', 'dp1'),
+    jarCookie('.ebay.com', 's', { httpOnly: false })
+  ]);
+
+  const { discoverSessions } = await import('../src/platform/sessions.js');
+  const [site] = await discoverSessions();
+
+  assert.equal(site.signedIn, false);
+  assert.equal(site.strongCount, 0, 'nothing here is evidence of an account');
+});
+
+test('the judgement is re-derived from the jar every time, never remembered', async () => {
+  // The bug that outlived the fix above. A permanent record of "domains judged signed in"
+  // meant ebay.com stayed listed after the rule that put it there was corrected, because
+  // nothing re-checked it. Sites misjudged in that window were all frozen the same way.
+  // Deriving the answer fresh is what makes a fix actually reach the user.
+  fakeJar([jarCookie('.ebay.com', 'sessionid')]);
+  const { discoverSessions } = await import('../src/platform/sessions.js');
+  assert.equal((await discoverSessions())[0].signedIn, true);
+
+  fakeJar([jarCookie('.ebay.com', 'nonsession')]);
+  assert.equal(
+    (await discoverSessions())[0].signedIn,
+    false,
+    'the previous yes must not survive the evidence for it'
+  );
+});

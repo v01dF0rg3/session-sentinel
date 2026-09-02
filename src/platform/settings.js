@@ -94,13 +94,25 @@ export async function ensureInitialized() {
  */
 export async function migrateSettings() {
   const settings = await getSettings();
-  if (settings.version >= 5) return settings;
+  if (settings.version >= 6) return settings;
 
   /** @type {Partial<Settings>} */
-  const patch = { version: 5 };
+  const patch = { version: 6 };
   if (settings.version < 2) patch.notifications = false;
   if (settings.version < 3) patch.tabHandling = 'reload';
   if (settings.version < 5) patch.compromisePrompt = 'high';
+
+  // v6 removed a permanent record of every domain ever judged signed in. It froze the
+  // heuristic's mistakes: sites written in under a rule that mistook `nonsession` for an
+  // auth cookie stayed listed after the rule was fixed, because nothing re-checked them.
+  // Deleting the key matters as much as deleting the code - the stale answers live here.
+  if (settings.version < 6) {
+    try {
+      await chrome.storage.local.remove('observedLogins');
+    } catch {
+      // A leftover key is inert once nothing reads it.
+    }
+  }
 
   return updateSettings(patch);
 }
