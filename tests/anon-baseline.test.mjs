@@ -43,12 +43,20 @@ test('no session-looking cookies at all is a plain no, not an unknown', () => {
   assert.equal(judgeSignIn([], null), 'anonymous');
 });
 
-test('what was already there the first time counts as anonymous too', () => {
-  // A homepage fetch does not see every cookie a site sets across a whole visit - eBay's
-  // `nonsession` arrives deeper than the front page. Anything present before we could have
-  // watched a sign-in predates it and proves nothing.
+test('what was already there at first sight is a question, not a no', () => {
+  // The error that emptied the list twice. A first-sight baseline is NOT proof of
+  // anonymity: for someone already signed in when the extension was installed, their real
+  // auth cookie is sitting in it. "Everything you have was there at first sight" means we
+  // cannot tell — so it becomes a question for the user, never a silent dismissal.
   const verdict = judgeSignIn(['nonsession', 'dp1'], null, ['nonsession', 'dp1']);
-  assert.equal(verdict, 'anonymous');
+  assert.equal(verdict, 'unknown');
+});
+
+test('only the stranger list can rule an account out', () => {
+  // First sight can promote, never dismiss. Only cookies known to be handed to people with
+  // no account can prove there is no account.
+  assert.equal(judgeSignIn(['session_id'], BLOOMBERG, ['session_id']), 'anonymous');
+  assert.equal(judgeSignIn(['session_id'], null, ['session_id']), 'unknown');
 });
 
 test('a new cookie appearing after first sight is a sign-in', () => {
@@ -56,11 +64,15 @@ test('a new cookie appearing after first sight is a sign-in', () => {
   assert.equal(verdict, 'signedIn');
 });
 
-test('the two sources of doubt combine rather than override each other', () => {
-  // The probe missed a cookie; first sight caught it. Neither alone is enough.
+test('the two sources combine, with first sight only ever promoting', () => {
+  // The probe missed `_octo`, so on its own it reports an account that is not there.
   const partial = baselineFrom(['_gh_sess']);
   assert.equal(judgeSignIn(['_gh_sess', '_octo'], partial), 'signedIn', 'probe alone is fooled');
-  assert.equal(judgeSignIn(['_gh_sess', '_octo'], partial, ['_octo']), 'anonymous');
+
+  // First sight knows `_octo` was always present, which removes the false remainder. The
+  // two sources now disagree — the probe calls `_octo` unexplained, first sight calls it
+  // old — and a disagreement is a question, not a verdict.
+  assert.equal(judgeSignIn(['_gh_sess', '_octo'], partial, ['_gh_sess', '_octo']), 'unknown');
 });
 
 test('an empty probe result is not mistaken for a site that sets no cookies', () => {
@@ -71,14 +83,27 @@ test('an empty probe result is not mistaken for a site that sets no cookies', ()
   assert.equal(judgeSignIn(['session_token'], failed), 'unknown');
 });
 
+test('an empty first-sight record is evidence; a missing one is not', () => {
+  // [] says "this domain had no auth cookies when we first looked", which makes any auth
+  // cookie now a sign-in. null says "we have never looked". Collapsing the two would make
+  // every unseen site look signed in.
+  assert.equal(judgeSignIn(['user_session'], null, []), 'signedIn');
+  assert.equal(judgeSignIn(['user_session'], null, null), 'unknown');
+});
+
 test('a baseline recorded this instant rules out everything, so it must not be used yet', () => {
   // The bug this caught, stated as an invariant. On a first scan the baseline is written
   // from the very cookies being judged, so subtracting it leaves nothing and every site
   // grades anonymous. Worse than a wrong answer: nothing is left marked unknown, so the
   // probe that would settle it never runs. The list came back holding one entry.
   const jar = ['user_session', '_gh_sess'];
-  assert.equal(judgeSignIn(jar, null, jar), 'anonymous', 'what the caller must not do');
-  assert.equal(judgeSignIn(jar, null, []), 'unknown', 'what a first sighting means');
+  assert.equal(judgeSignIn(jar, null, jar), 'unknown', 'judging itself proves nothing');
+  assert.equal(judgeSignIn(jar, null, null), 'unknown', 'and a first sighting proves nothing');
+  assert.equal(
+    judgeSignIn([...jar, 'arrived_later'], null, jar),
+    'signedIn',
+    'only a cookie that appeared afterwards is evidence'
+  );
 });
 
 // --- the first-sight record, against fake storage ------------------------------------

@@ -475,13 +475,15 @@ async function relevanceSignals(settings, sessions) {
       continue;
     }
 
-    // A domain seen for the first time on THIS pass has a baseline written microseconds ago
-    // from the very cookies being judged. Using it would rule out everything and grade every
-    // site anonymous. It is evidence from the next scan onwards.
-    const everSeen = added.has(site.domain) ? [] : sight[site.domain];
+    // Null, not [], for a domain first recorded on THIS pass: its baseline was written
+    // microseconds ago from the very cookies being judged, so it can only judge itself.
+    const everSeen = added.has(site.domain) ? null : sight[site.domain] ?? null;
 
+    // First sight can promote but never dismiss - it may well contain the user's own auth
+    // cookie, if they were signed in before installing. Anything it cannot promote is a
+    // question, not a no.
     if (judgeSignIn(site.authNames, null, everSeen) === 'signedIn') signedIn.add(site.domain);
-    else if (!everSeen?.length || added.has(site.domain)) unconfirmed.add(site.domain);
+    else unconfirmed.add(site.domain);
   }
 
   return { signedIn, unconfirmed, open, frequent, acted };

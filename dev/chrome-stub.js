@@ -116,13 +116,13 @@
   // The real overview attaches these via core/relevance.js. The preview needs them so the
   // "Yours?" control, which keys off an unconfirmed reason, is actually exercised.
   for (const site of sites) {
-    site.reasons = signedInNow.has(site.domain)
-      ? ['signed in here']
-      : actedOn.has(site.domain)
-        ? ['you have signed out of this before']
-        : site.domain === 'bloomberg.com'
-          ? ['cookies look like a sign-in, not confirmed yet']
-          : [];
+    // After 0.27.1 almost everything starts as a question: a first-sight baseline can
+    // contain the user's own auth cookie, so it may promote but never dismiss.
+    site.reasons = actedOn.has(site.domain)
+      ? ['you have signed out of this before']
+      : signedInNow.has(site.domain) || site.domain === 'bloomberg.com'
+        ? ['cookies look like a sign-in, not confirmed yet']
+        : [];
   }
 
   const overview = () => ({

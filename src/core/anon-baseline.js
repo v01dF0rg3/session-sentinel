@@ -69,30 +69,55 @@
  */
 
 /**
- * Decide whether a site's cookies show an account, given what strangers receive.
+ * Decide whether a site's cookies show an account.
+ *
+ * TWO KINDS OF BASELINE, AND ONLY ONE OF THEM PROVES ANYTHING.
+ *
+ * `baseline` is what the site hands a stranger. It is authoritative: a cookie on that list
+ * is issued to people with no account, so a jar containing nothing else is not an account.
+ * It is also, today, always null — Chrome will not surrender the `Set-Cookie` header.
+ *
+ * `everSeen` is what the domain already had the first time this extension looked. It is
+ * NOT authoritative, and mistaking it for proof is what emptied the list twice. For a user
+ * who was already signed in when the extension was installed, their real auth cookie is
+ * sitting in that baseline. "Everything you have was there at first sight" therefore means
+ * *we cannot tell*, not *you are anonymous*.
+ *
+ * So first sight can only ever promote, never dismiss. A cookie that appeared after we
+ * started watching is a sign-in; everything else is a question for the user.
  *
  * @param {string[]} authGradeNames Names in the user's jar that look session-bearing.
- * @param {Baseline | null} baseline Reserved: what a stranger receives, if ever knowable.
- * @param {string[]} [everSeen] Auth-grade names present the first time we saw this domain.
+ * @param {Baseline | null} baseline What a stranger receives. Authoritative; today null.
+ * @param {string[] | null} [everSeen] Names at first sight. Null when never recorded, or
+ *   when the record was written by this very pass and would only be judging itself.
  * @returns {SignInVerdict}
  */
-export function judgeSignIn(authGradeNames, baseline, everSeen = []) {
+export function judgeSignIn(authGradeNames, baseline, everSeen = null) {
   if (!authGradeNames.length) return 'anonymous';
 
-  // Order matters here, and getting it wrong is the original bug in a new costume. With
-  // nothing to subtract, every cookie survives the subtraction and the site looks signed
-  // in — which is precisely how bloomberg.com got onto a list headed SIGNED IN. So the
-  // absence of a yardstick has to be checked BEFORE the measurement, not after it.
-  if (!baseline?.usable && !everSeen.length) return 'unknown';
+  // With no yardstick at all, nothing survives to be measured against and every cookie
+  // looks like a remainder. That is the original bug — bloomberg.com on a list headed
+  // SIGNED IN — so the absence of evidence is checked before the measurement, not after.
+  // An `everSeen` of [] is evidence: it says the domain had no auth cookies at first sight.
+  // Null means no record, which is not the same thing.
+  if (!baseline?.usable && everSeen === null) return 'unknown';
 
-  // Anything a stranger is handed cannot be evidence of an account. Same for anything that
-  // was already there the first time this domain was seen - it predates any sign-in we
-  // could have observed, so it proves nothing either.
-  const ruledOut = new Set([...(baseline?.anonymous ?? []), ...everSeen]);
-  const remainder = authGradeNames.filter((name) => !ruledOut.has(name));
+  // Promotion needs both sources to agree, where both exist. A cookie is evidence of an
+  // account only if a stranger does not receive it AND it was not already there when we
+  // started watching. Either one alone can be fooled: the stranger list is built from a
+  // single fetch and misses cookies set deeper in a visit, and first sight contains the
+  // user's own auth cookie whenever they were already signed in before installing.
+  const ruledOut = new Set([...(baseline?.anonymous ?? []), ...(everSeen ?? [])]);
+  if (authGradeNames.some((name) => !ruledOut.has(name))) return 'signedIn';
 
-  // What is left was issued to this user, in response to something a stranger cannot do.
-  return remainder.length ? 'signedIn' : 'anonymous';
+  // Dismissal is stricter, and only the stranger list may do it. Concluding "anonymous"
+  // from first sight is what emptied the list twice: for a user signed in before install,
+  // first sight holds their real auth cookie, so it explaining everything means nothing.
+  if (baseline?.usable && authGradeNames.every((name) => baseline.anonymous.includes(name))) {
+    return 'anonymous';
+  }
+
+  return 'unknown';
 }
 
 /**

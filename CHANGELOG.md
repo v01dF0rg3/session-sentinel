@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.27.1 — 2 September 2026
+
+### First sight was being read as proof, and it is not
+
+The list still showed one site. Same symptom as 0.26.1, different cause, and the cause was
+conceptual rather than a slip.
+
+A first-sight baseline records what a domain already had when the extension first looked.
+`judgeSignIn` treated "everything you have was there at first sight" as *anonymous*. For
+anyone who was already signed in before installing — which is everyone, on upgrade — their
+real auth cookie is sitting in that baseline. So every site explained itself, every site
+graded anonymous, and the list emptied.
+
+Only a list of cookies known to be handed to people with no account can prove there is no
+account, and that list requires the `Set-Cookie` header Chrome will not surrender. So:
+
+- **First sight may promote, never dismiss.** A cookie that appeared after we started
+  watching is a sign-in. Everything else is a question.
+- **Promotion needs both sources to agree**, where both exist. Each can be fooled alone: a
+  stranger list built from one fetch misses cookies set deeper in a visit, and first sight
+  contains the user's own auth cookie. When they disagree, that is a question too.
+- **An empty first-sight record is evidence; a missing one is not.** `[]` says the domain
+  had no auth cookies when first looked at, which makes any auth cookie now a sign-in.
+  `null` says nobody has looked. Collapsing the two made every unseen site look signed in —
+  the original bloomberg.com bug, reintroduced while fixing this one and caught by a test.
+
+### What this looks like on upgrade
+
+Almost every site starts as **Yours? Yes / No**, because almost every site predates the
+baseline. Answer once and it settles. Anything signed into afterwards is detected with no
+question asked.
+
+That is a worse first screen than a confident list and a better one than a wrong list. Four
+rules in a row were confidently wrong here; this one says what it does not know.
+
+### Also
+
+- 143 tests (up from 141). Three encoded the old semantics and were rewritten rather than
+  patched — including one whose assertion was wrong, which is what surfaced the
+  disagreement case above.
+
 ## 0.27.0 — 2 September 2026
 
 ### The probe in 0.26.0 could never have worked
