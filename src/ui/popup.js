@@ -114,7 +114,6 @@ function render() {
   }
 
   renderSiteList(sites, overview.relevance);
-  void renderFrequencyOffer();
 
   if (lastReport?.sites?.length) {
     const when = new Date(lastReport.finishedAt);
@@ -700,80 +699,3 @@ el.openRecovery.addEventListener('click', () => {
 el.openOptions.addEventListener('click', () => chrome.runtime.openOptionsPage());
 
 load();
-
-/**
- * Offer to order the list by the sites the user actually uses most.
- *
- * The permission behind it is optional and off by default, and the control for it lived in
- * Settings — where a preference nobody finds is a preference nobody has. It is offered
- * here instead, at the moment the list is long enough for ordering to matter, and only
- * once: dismissing it is remembered.
- *
- * Frequency orders and never confirms. A site visited daily is not thereby an account, and
- * a bank visited twice a year does not sink below a news site. It breaks ties inside a
- * risk tier and does nothing else.
- */
-const OFFER_KEY = 'frequencyOfferDismissed';
-
-async function renderFrequencyOffer() {
-  const offer = document.getElementById('frequency-offer');
-  if (!offer) return;
-
-  const enoughToSort = (overview?.sites?.length ?? 0) >= 8;
-  if (overview?.settings?.useVisitFrequency || !enoughToSort) {
-    offer.hidden = true;
-    return;
-  }
-
-  try {
-    const stored = await chrome.storage.local.get(OFFER_KEY);
-    offer.hidden = Boolean(stored[OFFER_KEY]);
-  } catch {
-    offer.hidden = false;
-  }
-}
-
-/**
- * Both handlers change the UI first and persist afterwards.
- *
- * They used to await storage, or Chrome's permission prompt, before touching anything
- * visible — so whether the click appeared to do anything depended on how long that await
- * took and whether the popup survived it. Chrome dismisses the popup to show a permission
- * prompt, and a popup that closes mid-await never reaches its own second line. From the
- * user's side that reads as a button that works at random.
- *
- * Nothing here needs the await to have finished to be correct: the service worker mirrors
- * a granted permission into the setting on its own, and a dismissal that fails to persist
- * costs one reappearing row rather than a broken control.
- */
-document.getElementById('frequency-enable')?.addEventListener('click', async () => {
-  hideOffer();
-
-  let granted = false;
-  try {
-    // First statement after the gesture: Chrome grants optional permissions only during a
-    // user gesture, and awaiting anything beforehand loses it.
-    granted = await chrome.permissions.request({ permissions: ['topSites'] });
-  } catch {
-    // Some Chrome builds refuse this from a popup outright. Settings is an ordinary tab,
-    // where the prompt has somewhere to sit and the existing checkbox already works.
-    chrome.runtime.openOptionsPage();
-    return;
-  }
-
-  if (!granted) {
-    await chrome.storage.local.set({ [OFFER_KEY]: true });
-    return;
-  }
-  await load();
-});
-
-document.getElementById('frequency-dismiss')?.addEventListener('click', () => {
-  hideOffer();
-  void chrome.storage.local.set({ [OFFER_KEY]: true });
-});
-
-function hideOffer() {
-  const offer = document.getElementById('frequency-offer');
-  if (offer) offer.hidden = true;
-}

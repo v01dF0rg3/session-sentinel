@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.31.0 — 2 September 2026
+
+### The most-used-first offer is gone
+
+It was reported as not working three times. It was fixed twice — once by routing the
+permission through Settings, once by responding to the click before awaiting storage — and
+reported broken again after each. A one-line convenience that costs three rounds and still
+cannot be trusted is not worth carrying.
+
+Ordering by most-used still exists, in **Settings → Order accounts by how often you use
+them**, where the checkbox has worked throughout. The popup no longer advertises it.
+
+### Why a site you are signed into can still ask
+
+Confirming an account happens three ways, and a site can escape all of them:
+
+- a cookie appearing that was not there at first sight — misses accounts that predate the
+  extension, and sites that carry one cookie name through login unchanged
+- a federated round trip — only fires when one happens
+- the page showing a sign-out control — misses apps that build their account menu only when
+  it is opened
+
+X is the third case. Its "Log out" does not exist in the page until the avatar menu is
+clicked, and while signed in it offers no "Sign in" either, so there is nothing to read.
+
+A fourth signal was tried and rejected on measurement: links to `/account` or `/settings`
+paths. Logged-out bloomberg.com carries four of them — the exact site whose false
+confirmation started this — so the rule would have been worse than none.
+
+Those sites are one click on the row: **Account? Add**. Answered once, permanently.
+
 ## 0.30.1 — 2 September 2026
 
 ### The offer buttons worked at random because they answered last

@@ -327,16 +327,6 @@ th { color: var(--text-muted); font-weight: 600; font-size: 11px; text-transform
 .verdict { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .verdict .muted { font-size: 11px; }
 
-/* One-line offer to enable most-visited ordering. Lives in the popup rather than Settings
-   because a preference nobody finds is a preference nobody has. */
-.offer {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  margin: 0 0 6px; padding: 6px 8px;
-  border: 1px solid var(--border); border-radius: 6px;
-  font-size: 11.5px;
-}
-.offer .link { font-size: 11.5px; }
-.offer .link.muted { color: var(--text-muted); }
 
 /* Always visible, never inside the scrolling list. These are the only routes to the other
    two hundred cookied domains, and inside the list they sat below the fold — making a
