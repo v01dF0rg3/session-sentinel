@@ -151,7 +151,7 @@ button:disabled { opacity: .55; cursor: default; }
 
 /* The one part allowed to shrink. min-height:0 is required or a flex item refuses to
    shrink below its content and the overflow moves back to the page. */
-.sites { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.sites { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
 .sites-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; flex-shrink: 0; }
 .count { color: var(--text-muted); font-size: 11.5px; }
 
@@ -164,7 +164,7 @@ button:disabled { opacity: .55; cursor: default; }
 .filter::placeholder { color: var(--text-muted); }
 .filter:focus { border-color: var(--accent); }
 
-.site-list { list-style: none; margin: 0; padding: 0; flex: 1; min-height: 72px; overflow-y: auto; }
+.site-list { list-style: none; margin: 0; padding: 0; flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .site-list li {
   display: flex; align-items: center; gap: 8px;
   padding: 6px 4px; border-bottom: 1px solid var(--border);
@@ -337,3 +337,13 @@ th { color: var(--text-muted); font-weight: 600; font-size: 11px; text-transform
 }
 .offer .link { font-size: 11.5px; }
 .offer .link.muted { color: var(--text-muted); }
+
+/* Always visible, never inside the scrolling list. These are the only routes to the other
+   two hundred cookied domains, and inside the list they sat below the fold — making a
+   large profile look like a four-site one. */
+.list-actions { flex-shrink: 0; }
+.list-actions .disclosure {
+  display: flex; justify-content: center;
+  padding: 7px 4px 0; border-top: 1px solid var(--border);
+}
+.list-actions .disclosure .link { font-size: 11.5px; }

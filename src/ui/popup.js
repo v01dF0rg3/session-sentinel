@@ -14,6 +14,7 @@ let overview = null;
 const el = {
   status: /** @type {HTMLElement} */ (document.getElementById('status')),
   siteList: /** @type {HTMLUListElement} */ (document.getElementById('site-list')),
+  listActions: /** @type {HTMLElement} */ (document.getElementById('list-actions')),
   siteCount: /** @type {HTMLElement} */ (document.getElementById('site-count')),
   lastRun: /** @type {HTMLElement} */ (document.getElementById('last-run')),
   logoutAll: /** @type {HTMLButtonElement} */ (document.getElementById('logout-all')),
@@ -140,6 +141,7 @@ function render() {
  */
 function renderSiteList(sites, relevance) {
   el.siteList.replaceChildren();
+  el.listActions.replaceChildren();
 
   if (sites.length === 0) {
     el.siteList.append(emptyRow('No sites with session-looking cookies found.'));
@@ -179,8 +181,12 @@ function renderSiteList(sites, relevance) {
     for (const site of configured) el.siteList.append(buildSiteRow(site));
   }
 
+  // The two routes into everything else live BELOW the scrolling list, not inside it.
+  // Placed there they sat under whatever happened to be the last confirmed account and
+  // were simply never seen, so a profile with two hundred cookied domains looked like a
+  // profile with four. A control that reveals the rest is worthless if it is itself hidden.
   if (questions.length) {
-    el.siteList.append(questionDisclosureRow(questions.length));
+    el.listActions.append(questionDisclosureRow(questions.length));
     if (showQuestions) {
       el.siteList.append(reviewInstructionRow());
       for (const group of groupByTier(questions)) {
@@ -191,7 +197,7 @@ function renderSiteList(sites, relevance) {
   }
 
   if (!other.length) return;
-  el.siteList.append(otherDisclosureRow(other.length));
+  el.listActions.append(otherDisclosureRow(other.length));
   if (!showOther) return;
 
   for (const group of groupByTier(other)) {
@@ -728,15 +734,19 @@ async function renderFrequencyOffer() {
 }
 
 document.getElementById('frequency-enable')?.addEventListener('click', async () => {
-  // Must be called straight from the click: Chrome only grants an optional permission
-  // during a user gesture, and awaiting anything first loses it.
+  // Called straight from the click: Chrome grants an optional permission only during a
+  // user gesture, and awaiting anything first loses it.
+  //
+  // Chrome may dismiss the popup to show its prompt, which would kill this function
+  // mid-flight and leave the permission granted while the setting stayed off. The service
+  // worker watches permissions.onAdded and sets it there, so the two cannot disagree
+  // whether or not these next two lines ever run.
   const granted = await chrome.permissions.request({ permissions: ['topSites'] });
   if (!granted) {
     await chrome.storage.local.set({ [OFFER_KEY]: true });
     document.getElementById('frequency-offer').hidden = true;
     return;
   }
-  await send({ type: 'updateSettings', patch: { useVisitFrequency: true } });
   await load();
 });
 

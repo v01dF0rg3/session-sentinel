@@ -30,6 +30,8 @@ import { summariseCoverage } from '../core/coverage.js';
 import { confirmedAccountDomains, partitionSites } from '../core/relevance.js';
 import { knownChangePasswordSupport, probeChangePassword } from '../platform/change-password.js';
 import { baselineOnVisit, recordFirstSight } from '../platform/first-sight.js';
+import { observedLogins, recordLoginEvent } from '../platform/login-events.js';
+import { signInCompletedFor } from '../core/oauth-return.js';
 import { getVerdicts, setVerdict } from '../platform/site-verdict.js';
 import { judgeSignIn } from '../core/anon-baseline.js';
 
@@ -480,6 +482,7 @@ async function relevanceSignals(settings, sessions) {
   const candidates = sessions.filter((session) => session.signedIn);
   const { sight, added } = await recordFirstSight(candidates);
   const verdicts = await getVerdicts();
+  const seenSignIn = await observedLogins();
 
   /** @type {Set<string>} */
   const signedIn = new Set();
@@ -504,19 +507,67 @@ async function relevanceSignals(settings, sessions) {
     // First sight can promote but never dismiss - it may well contain the user's own auth
     // cookie, if they were signed in before installing. Anything it cannot promote is a
     // question, not a no.
-    if (judgeSignIn(site.authNames, everSeen) === 'signedIn') signedIn.add(site.domain);
-    else unconfirmed.add(site.domain);
+    // A sign-in watched happening counts, but only while the site still holds cookies to
+    // match - which the candidate filter above already guarantees. That is the difference
+    // from the cache this project removed: the record can promote a site, never keep one
+    // listed after the evidence for it is gone.
+    if (seenSignIn.has(site.domain) || judgeSignIn(site.authNames, everSeen) === 'signedIn') {
+      signedIn.add(site.domain);
+    } else unconfirmed.add(site.domain);
   }
 
   return { signedIn, unconfirmed, open, frequent };
 }
 
-chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
-  // A page load is when a site can still be seen as it looks to someone not yet signed in.
-  // Baselining here is what lets a sign-in a minute later confirm itself with no question.
+/**
+ * The last top-level URL seen in each tab, so a return trip from an identity provider is
+ * recognisable. In memory only: MV3 kills the worker after ~30s idle, and losing this
+ * costs at most one undetected sign-in, which the user can still answer by hand.
+ * @type {Map<number, string>}
+ */
+const lastUrlByTab = new Map();
+
+chrome.tabs.onRemoved.addListener((tabId) => lastUrlByTab.delete(tabId));
+
+/**
+ * Keep the frequency setting in step with the permission that backs it.
+ *
+ * The popup asks for `topSites` during a click, and Chrome may dismiss the popup to show
+ * its prompt — killing the handler before it can save the setting, leaving the permission
+ * granted and the feature off with no way to tell. Setting it here means the two cannot
+ * disagree, whichever way the popup is torn down.
+ */
+chrome.permissions.onAdded.addListener(async (permissions) => {
+  if (permissions.permissions?.includes('topSites')) {
+    await updateSettings({ useVisitFrequency: true });
+  }
+});
+
+chrome.permissions.onRemoved.addListener(async (permissions) => {
+  // Revoked from chrome://extensions rather than through our own control. A setting that
+  // claims to order by frequency with no permission behind it is just a lie in a checkbox.
+  if (permissions.permissions?.includes('topSites')) {
+    await updateSettings({ useVisitFrequency: false });
+  }
+});
+
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status !== 'complete' || !tab.url) return;
   if (!tab.url.startsWith('http://') && !tab.url.startsWith('https://')) return;
 
+  const previous = lastUrlByTab.get(tabId) ?? null;
+  lastUrlByTab.set(tabId, tab.url);
+
+  // A federated sign-in leaves the site's own cookie name unchanged until the callback, so
+  // for sites that reuse one name through login there is nothing in the jar to notice. The
+  // navigation is the evidence: an authorization code coming back, or a return trip from a
+  // provider's authorize endpoint.
+  const signedInTo = signInCompletedFor(tab.url, previous);
+  if (signedInTo) void recordLoginEvent(signedInTo);
+
+  // A page load is also when a site can still be seen as it looks to someone not yet
+  // signed in. Baselining here lets an ordinary sign-in confirm itself with no question.
   const host = hostnameFromUrl(tab.url);
   if (host) void baselineOnVisit(registrableDomain(host));
 });

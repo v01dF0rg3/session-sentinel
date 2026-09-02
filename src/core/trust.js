@@ -92,3 +92,19 @@ export function describeRefusal(url, targetDomain) {
   }
   return `refused to follow ${targetDomain}'s logout endpoint to ${host} (untrusted destination)`;
 }
+
+/**
+ * Is this host an identity provider we recognise?
+ *
+ * Split out from `isTrustedLogoutDestination` because that function also accepts anything
+ * on the target's own domain — correct for its purpose, and wrong for asking "did a
+ * provider hand the user here", where passing a host's own domain as the target makes
+ * every site vouch for itself. A test caught exactly that.
+ *
+ * @param {string} host
+ * @returns {boolean}
+ */
+export function isIdentityProvider(host) {
+  if (!host) return false;
+  return TRUSTED_IDP_DOMAINS.has(host) || TRUSTED_IDP_DOMAINS.has(registrableDomain(host));
+}

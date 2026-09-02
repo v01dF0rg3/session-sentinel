@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.29.0 — 2 September 2026
+
+### A federated sign-in now confirms itself too
+
+Detection works by spotting a cookie name that was not in the site's page-load baseline.
+That misses one case, and it is narrower than "SSO": a site that carries **the same cookie
+name** through login — anonymous session and authenticated session alike, changing only the
+value. No name changes, so nothing is seen. Password logins on such sites are missed
+identically; federation just makes it common, because the round trip leaves the site's own
+cookie untouched until the callback returns.
+
+The value does change, but anonymous session values rotate constantly, so "the value
+changed" is far too noisy to mean anything.
+
+The navigation is not. An OAuth callback is a top-level load back onto the site carrying an
+authorization code, or a return trip from a provider's authorize endpoint. Neither happens
+by accident, and neither requires reading a cookie value.
+
+**The trap, and how it is avoided.** `google.com` is on the identity-provider allowlist and
+is also the most-used search engine on earth, so "came from google.com" describes a search
+result click far more often than a completed sign-in. A loose rule here would refill the
+list with exactly the false accounts six versions have gone into removing. So the provider's
+host or path must actually look like an authenticating endpoint — `accounts.google.com`,
+`login.microsoftonline.com`, `/oauth/authorize` — and never a bare `www.google.com/search`.
+A bare `?code=` is likewise ignored: sites use it for discount and referral codes. Only
+`code` *and* `state` together is the authorization-code flow.
+
+Writing the tests caught a real one: the first version passed a host's own domain as the
+trust target, so `isTrustedLogoutDestination` matched on "same domain" and **every site
+could vouch for itself**. Provider checking is now its own function.
+
+Observed sign-ins are stored as domain and timestamp — never the URL, since an
+authorization code is a credential. And the record can only ever promote a site that still
+holds session cookies right now, so unlike the cache this project removed, it cannot keep a
+site listed after the evidence for it is gone.
+
+### The way into everything else was itself hidden
+
+"Add pre-existing accounts" and "Show N other cookied sites" were rendered *inside* the
+scrolling list, below whatever happened to be the last confirmed account. A profile with two
+hundred cookied domains looked like a profile with four. Both now sit below the list where
+they are always visible, and the list yields space to them rather than painting over the
+footer.
+
+### Also
+
+- `topSites` grants and revocations are now mirrored into the setting by the service worker.
+  Chrome can dismiss the popup to show its permission prompt, which would kill the handler
+  mid-flight and leave the permission granted with the feature switched off.
+- 165 tests (up from 156).
+
 ## 0.28.0 — 2 September 2026
 
 ### Signing in now confirms itself

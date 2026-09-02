@@ -330,6 +330,17 @@ byId('use-frequency').addEventListener('change', async (e) => {
   await load();
 });
 
+/**
+ * Arriving from the popup's one-line offer. The setting is several screens down a long
+ * page, so landing on it silently would be the same as not arriving at all.
+ */
+function highlightFrequencyIfRequested() {
+  if (!location.hash.includes('frequency')) return;
+  const row = byId('use-frequency');
+  row?.scrollIntoView({ block: 'center' });
+  row?.focus();
+}
+
 async function renderFrequencyStatus() {
   const node = byId('frequency-status');
   const { granted } = await send({ type: 'frequencyStatus' });
@@ -354,3 +365,4 @@ byId('notifications').addEventListener('change', (e) =>
 );
 
 load();
+highlightFrequencyIfRequested();
