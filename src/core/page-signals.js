@@ -29,6 +29,8 @@
  * @property {number} logoutHrefs Links to a logout path, including inside closed menus.
  * @property {number} signInControls Visible links or buttons that begin signing in.
  * @property {number} passwordFields Password inputs on the page.
+ * @property {number} accountMarkers Controls that only exist for a signed-in user, such
+ *   as an account switcher, named by the site's own test ids or ARIA labels.
  */
 
 /** @typedef {'signedIn' | 'anonymous' | 'unknown'} PageVerdict */
@@ -45,6 +47,19 @@ export function readPageEvidence(evidence) {
   // A sign-out control is only ever rendered for someone who has a session to end. This is
   // the one signal in this whole project that a site states outright rather than implying.
   if (logout > 0) return 'signedIn';
+
+  // Apps that build their account menu only when it is opened show no sign-out control at
+  // load, and while signed in they offer no "Sign in" either — so there is nothing to read.
+  // X is the case: its "Log out" does not exist until the avatar is clicked. But the
+  // control that opens that menu does exist, and its name says what it is.
+  //
+  // Weaker than an explicit sign-out control, because it is inferred from a name rather
+  // than stated, so it must also agree with the rest of the page. Measured 2 September
+  // 2026: `SideNav_AccountSwitcher_Button` on signed-in X, and zero matches on logged-out
+  // x.com, github.com and bloomberg.com.
+  if ((evidence.accountMarkers ?? 0) > 0 && (evidence.signInControls ?? 0) === 0) {
+    return 'signedIn';
+  }
 
   // The converse is weaker and needs more care. "Sign in" with no sign-out anywhere is a
   // logged-out page — but a login form on its own is not, because a signed-in user can be
@@ -65,3 +80,10 @@ export function readPageEvidence(evidence) {
 export const LOGOUT_TEXT = /^\s*(sign|log)\s*-?\s*(out|off)\b/i;
 export const SIGNIN_TEXT = /^\s*(sign|log)\s*-?\s*in\b|^\s*login\s*$|^\s*create account\s*$|^\s*sign up\s*$/i;
 export const LOGOUT_HREF = /\/(logout|signout|sign-out|sign_out|log-out|log_out)(\/|\?|#|$)/i;
+
+/**
+ * Names sites give the control that opens an account menu. Only rendered for someone who
+ * has an account to switch away from.
+ */
+export const ACCOUNT_MARKER =
+  /(account.?switch|switch.?account|account.?menu|user.?menu|profile.?menu|avatar.?menu)/i;

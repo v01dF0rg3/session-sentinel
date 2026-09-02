@@ -18,6 +18,7 @@ export function collectPageEvidence() {
   const LOGOUT_TEXT = /^\s*(sign|log)\s*-?\s*(out|off)\b/i;
   const SIGNIN_TEXT = /^\s*(sign|log)\s*-?\s*in\b|^\s*login\s*$|^\s*create account\s*$|^\s*sign up\s*$/i;
   const LOGOUT_HREF = /\/(logout|signout|sign-out|sign_out|log-out|log_out)(\/|\?|#|$)/i;
+  const ACCOUNT_MARKER = /(account.?switch|switch.?account|account.?menu|user.?menu|profile.?menu|avatar.?menu)/i;
 
   /** @param {Element} el */
   const visible = (el) => {
@@ -57,5 +58,13 @@ export function collectPageEvidence() {
 
   const passwordFields = document.querySelectorAll('input[type="password"]').length;
 
-  return { logoutControls, logoutHrefs, signInControls, passwordFields };
+  // The control that OPENS an account menu, for apps that build the menu's contents only
+  // once it is clicked. Sites name these themselves, in test ids and ARIA labels.
+  let accountMarkers = 0;
+  for (const el of document.querySelectorAll('[data-testid], [aria-label]')) {
+    const name = el.getAttribute('data-testid') || el.getAttribute('aria-label') || '';
+    if (name && ACCOUNT_MARKER.test(name)) accountMarkers += 1;
+  }
+
+  return { logoutControls, logoutHrefs, signInControls, passwordFields, accountMarkers };
 }

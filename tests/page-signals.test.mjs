@@ -15,13 +15,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { LOGOUT_HREF, LOGOUT_TEXT, SIGNIN_TEXT, readPageEvidence } from '../src/core/page-signals.js';
+import { ACCOUNT_MARKER, LOGOUT_HREF, LOGOUT_TEXT, SIGNIN_TEXT, readPageEvidence } from '../src/core/page-signals.js';
 
 const evidence = (over = {}) => ({
   logoutControls: 0,
   logoutHrefs: 0,
   signInControls: 0,
   passwordFields: 0,
+  accountMarkers: 0,
   ...over
 });
 
@@ -91,4 +92,39 @@ test('logout hrefs are recognised across the usual spellings', () => {
   }
   // A path that merely contains the word is not a logout endpoint.
   assert.equal(LOGOUT_HREF.test('/help/how-to-logout-everywhere'), false);
+});
+
+test('an account switcher means signed in, for apps that build menus on demand', () => {
+  // X is the case that forced this. Its "Log out" does not exist in the page until the
+  // avatar is clicked, and while signed in it offers no "Sign in" either — so there was
+  // nothing to read and the account stayed a question forever. The control that OPENS
+  // that menu does exist, and the site names it itself.
+  assert.equal(readPageEvidence(evidence({ accountMarkers: 1 })), 'signedIn');
+});
+
+test('an account marker must agree with the rest of the page', () => {
+  // Weaker evidence than an explicit sign-out control, because it is inferred from a name
+  // rather than stated outright. A page still offering to sign you in contradicts it, and
+  // a contradiction is a question rather than a verdict.
+  assert.equal(readPageEvidence(evidence({ accountMarkers: 1, signInControls: 1 })), 'anonymous');
+
+  // A real sign-out control has no such requirement — it is unambiguous on its own.
+  assert.equal(
+    readPageEvidence(evidence({ logoutControls: 1, signInControls: 1 })),
+    'signedIn'
+  );
+});
+
+test('the account-marker pattern matches what sites actually call it', () => {
+  // Measured 2 September 2026 on the real pages, not invented.
+  assert.ok(ACCOUNT_MARKER.test('SideNav_AccountSwitcher_Button'), 'signed-in X');
+  for (const name of ['account-menu', 'UserMenu', 'profile menu', 'Switch account']) {
+    assert.ok(ACCOUNT_MARKER.test(name), name);
+  }
+
+  // And does not fire on the ordinary furniture of a logged-out page. Zero matches were
+  // measured across logged-out x.com, github.com and bloomberg.com.
+  for (const name of ['SideNav_NewTweet_Button', 'AppTabBar_Profile_Link', 'Sign in', 'search']) {
+    assert.equal(ACCOUNT_MARKER.test(name), false, name);
+  }
 });

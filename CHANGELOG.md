@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.32.0 — 2 September 2026
+
+### Apps that build their account menu on demand are now recognised
+
+X could not be confirmed by any of the three existing routes. No cookie appeared that was
+not there at first sight, no federated round trip happened, and reading the page found
+nothing: its **"Log out" does not exist in the document until the avatar is clicked**, and
+while signed in it offers no "Sign in" either. Nothing to read, so it stayed a question.
+
+But the control that *opens* that menu does exist, and X names it itself —
+`SideNav_AccountSwitcher_Button`. Sites label these in their own test ids and ARIA labels,
+and an account switcher is only ever rendered for someone who has an account to switch away
+from.
+
+Measured before shipping, both directions:
+
+| Page | Account markers |
+| --- | --- |
+| x.com, signed in | `SideNav_AccountSwitcher_Button` |
+| x.com, logged out | none |
+| github.com, logged out | none |
+| bloomberg.com, logged out | none |
+
+This is inferred from a name rather than stated outright, so unlike a real sign-out control
+it must also agree with the rest of the page: a page still offering to sign you in
+contradicts it, and a contradiction stays a question. An explicit sign-out control needs no
+such corroboration.
+
+The pattern is generic — account switcher, account menu, user menu, profile menu, avatar
+menu — rather than a rule about X. Twelve per-site recipes were deleted from this project
+for being guesses about pages nobody had looked at; this one was measured on both states
+before it was written.
+
+### Also
+
+- 177 tests (up from 174).
+
 ## 0.31.0 — 2 September 2026
 
 ### The most-used-first offer is gone
