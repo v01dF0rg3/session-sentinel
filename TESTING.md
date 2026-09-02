@@ -25,11 +25,27 @@ FAIL inline. These cover `pageStep` — the function injected into real pages �
 hiding patterns sites actually use. Every one of them exists because a naive
 implementation reports success for a click that never landed.
 
+**Run these in a visible window with a real viewport.** `pageStep` decides visibility by
+hit-testing with `elementFromPoint`, which only answers for coordinates inside the viewport.
+In a hidden pane, a headless run, or any window reporting `innerHeight: 0`, the test stage
+scrolls out of view and **five assertions fail spuriously** — aria-label matching,
+`assertPresent`, `assertAbsent`, and `waitFor`. Nothing is wrong with the extension; the
+harness simply cannot see. Check `innerHeight` before believing a failure here.
+
 The same server hosts UI previews with a stubbed `chrome.*` API:
 
 - `/dev/popup-preview.html`
 - `/dev/options-preview.html`
 - `/dev/welcome-preview.html`
+- `/dev/recovery-preview.html`
+- `/dev/diagnostics-preview.html`
+
+These are **generated from `src/ui/*.html` on request**, not stored. They were hand-copied
+once and drifted three times; the last drift left the preview advertising "Log out of all
+sessions" and a heading reading "Signed in" long after the real popup had been corrected to
+"Attempt sign-out of confirmed accounts". Reviewing wording against a stale copy produces
+confident wrong answers, so the copies are gone and the server rebases asset paths and
+injects the stub on the fly.
 
 ## 3. Built-in diagnostics (in Chrome, one click)
 

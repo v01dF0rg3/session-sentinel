@@ -21,6 +21,13 @@ const USER_FACING_FILES = [
   '../src/ui/recovery.html',
   '../src/ui/recovery.js',
   '../src/ui/welcome.html',
+  '../src/ui/options.js',
+  // Diagnostics and the written docs describe what the extension proves, so they can
+  // reintroduce a retired promise exactly as easily as the popup can.
+  '../src/ui/diagnostics.html',
+  '../src/ui/diagnostics.js',
+  '../ARCHITECTURE.md',
+  '../TESTING.md',
   '../src/core/session-pages.js'
 ];
 
