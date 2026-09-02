@@ -6,6 +6,7 @@
 import { outcomeColor, summarize } from '../engine/report.js';
 import { compromiseAdviceFor } from '../core/session-pages.js';
 import { atLeast } from '../core/risk.js';
+import { groupByTier } from '../core/relevance.js';
 
 /** @type {any} */
 let overview = null;
@@ -35,6 +36,9 @@ const el = {
 
 /** Current text in the filter box. Kept out of `overview` so re-renders preserve it. */
 let filterText = '';
+
+/** Is the long tail of unrecognised sites expanded? Also survives re-renders. */
+let showOther = false;
 
 /**
  * @param {any} message
@@ -96,52 +100,7 @@ function render() {
     el.current.hidden = true;
   }
 
-  // Site list, narrowed by the filter box.
-  el.siteList.replaceChildren();
-
-  const needle = filterText.trim().toLowerCase();
-  const visible = needle ? sites.filter((/** @type {any} */ s) => s.domain.includes(needle)) : sites;
-
-  if (sites.length === 0) {
-    const empty = document.createElement('li');
-    empty.className = 'empty';
-    empty.textContent = 'No signed-in sites found yet. They appear here as you browse.';
-    el.siteList.append(empty);
-  } else if (visible.length === 0) {
-    const empty = document.createElement('li');
-    empty.className = 'empty';
-    empty.textContent = `No sites match "${filterText}".`;
-    el.siteList.append(empty);
-  }
-
-  for (const site of visible) {
-    const row = document.createElement('li');
-    if (site.mode === 'ignored') row.classList.add('kept');
-
-    const badge = document.createElement('span');
-    badge.className = `badge ${site.tier}`;
-    badge.textContent = site.tier;
-    badge.title = site.tierReason;
-
-    const name = document.createElement('span');
-    name.className = 'site-name';
-    name.textContent = site.domain;
-
-    const actions = document.createElement('span');
-    actions.className = 'site-actions';
-
-    const logout = document.createElement('button');
-    logout.className = 'ghost small reveal';
-    logout.textContent = 'Log out';
-    logout.addEventListener('click', () => {
-      if (maybePromptCompromise(site.domain, site.tier)) return;
-      act(`Signing out of ${site.domain}...`, { type: 'runSite', domain: site.domain });
-    });
-
-    actions.append(logout, buildKeepControl(site.domain, site.mode === 'ignored', 'Keep'));
-    row.append(badge, name, actions);
-    el.siteList.append(row);
-  }
+  renderSiteList(sites, overview.relevance);
 
   if (lastReport?.sites?.length) {
     const when = new Date(lastReport.finishedAt);
@@ -149,6 +108,145 @@ function render() {
   } else {
     el.lastRun.textContent = 'No runs yet.';
   }
+}
+
+/**
+ * The list of signed-in sites.
+ *
+ * Cookie discovery finds every cookied domain, which on a real profile is hundreds. The
+ * split into "sites you use" and the rest is the difference between a list and a wall.
+ * What it is NOT is a change of scope: `sites` is still the whole set, the count above it
+ * still reads the whole set, and "Log out of everything" still acts on the whole set. Only
+ * the first screenful is opinionated.
+ *
+ * A filter escapes the split entirely — someone typing a domain is looking for that
+ * domain, and finding nothing because it sat behind a disclosure would be maddening.
+ *
+ * @param {any[]} sites
+ * @param {any} relevance
+ */
+function renderSiteList(sites, relevance) {
+  el.siteList.replaceChildren();
+
+  if (sites.length === 0) {
+    el.siteList.append(emptyRow('No signed-in sites found yet. They appear here as you browse.'));
+    return;
+  }
+
+  const needle = filterText.trim().toLowerCase();
+  if (needle) {
+    const matches = sites.filter((s) => s.domain.includes(needle));
+    if (!matches.length) {
+      el.siteList.append(emptyRow(`No sites match "${filterText}".`));
+      return;
+    }
+    for (const site of matches) el.siteList.append(buildSiteRow(site));
+    return;
+  }
+
+  const usedSet = new Set(relevance?.used ?? sites.map((s) => s.domain));
+  const used = sites.filter((s) => usedSet.has(s.domain));
+  const other = sites.filter((s) => !usedSet.has(s.domain));
+
+  for (const group of groupByTier(used)) {
+    el.siteList.append(tierHeading(group.tier, group.sites.length));
+    for (const site of group.sites) el.siteList.append(buildSiteRow(site));
+  }
+
+  if (!other.length) return;
+  el.siteList.append(disclosureRow(other.length));
+  if (!showOther) return;
+
+  for (const group of groupByTier(other)) {
+    el.siteList.append(tierHeading(group.tier, group.sites.length));
+    for (const site of group.sites) el.siteList.append(buildSiteRow(site));
+  }
+}
+
+/** @param {string} text */
+function emptyRow(text) {
+  const row = document.createElement('li');
+  row.className = 'empty';
+  row.textContent = text;
+  return row;
+}
+
+/**
+ * @param {string} tier
+ * @param {number} count
+ */
+function tierHeading(tier, count) {
+  const row = document.createElement('li');
+  row.className = `group-heading ${tier}`;
+  row.setAttribute('role', 'presentation');
+  row.textContent = `${tier} risk`;
+
+  const n = document.createElement('span');
+  n.className = 'count';
+  n.textContent = String(count);
+  row.append(n);
+  return row;
+}
+
+/**
+ * The control that reveals the long tail.
+ *
+ * It states the count rather than saying "more", because the number is itself the honest
+ * part: that a profile carries two hundred other cookied domains is information, and a
+ * vague word would undersell what a full run actually covers.
+ *
+ * @param {number} count
+ */
+function disclosureRow(count) {
+  const row = document.createElement('li');
+  row.className = 'disclosure';
+
+  const button = document.createElement('button');
+  button.className = 'link';
+  button.type = 'button';
+  button.textContent = showOther
+    ? 'Hide other sites'
+    : `Show ${count} other site${count === 1 ? '' : 's'} with sign-in cookies`;
+  button.title =
+    'Sites you have cookies for but no sign of using. A full run clears them either way.';
+  button.addEventListener('click', () => {
+    showOther = !showOther;
+    render();
+  });
+
+  row.append(button);
+  return row;
+}
+
+/** @param {any} site */
+function buildSiteRow(site) {
+  const row = document.createElement('li');
+  if (site.mode === 'ignored') row.classList.add('kept');
+
+  const badge = document.createElement('span');
+  badge.className = `badge ${site.tier}`;
+  badge.textContent = site.tier;
+  badge.title = site.tierReason;
+
+  const name = document.createElement('span');
+  name.className = 'site-name';
+  name.textContent = site.domain;
+  if (site.reasons?.length) name.title = `Shown because it is ${site.reasons[0]}.`;
+
+  const actions = document.createElement('span');
+  actions.className = 'site-actions';
+
+  const logout = document.createElement('button');
+  logout.className = 'ghost small reveal';
+  logout.textContent = 'Log out';
+  logout.addEventListener('click', () => {
+    if (maybePromptCompromise(site.domain, site.tier)) return;
+    act(`Signing out of ${site.domain}...`, { type: 'runSite', domain: site.domain });
+  });
+
+  actions.append(logout, buildKeepControl(site.domain, site.mode === 'ignored', 'Keep'));
+  row.append(badge, name, actions);
+  return row;
 }
 
 /**

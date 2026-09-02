@@ -27,6 +27,8 @@ import { clearRecoveryState, getRecoveryState, markRecoveryStep, updateRecoveryS
 import { dropFrequencyPermission, getFrequentDomains, hasFrequencyPermission } from '../platform/frequency.js';
 import { clearCoverage, readCoverage } from '../platform/coverage.js';
 import { summariseCoverage } from '../core/coverage.js';
+import { partitionSites } from '../core/relevance.js';
+import { knownChangePasswordSupport, probeChangePassword } from '../platform/change-password.js';
 
 const RECIPE_ALARM = 'sentinel-recipe-refresh';
 
@@ -227,8 +229,14 @@ async function handleMessage(message) {
       const known = likelyLoggedIn(await discoverSessions()).map((s) => s.domain);
       const frequent = settings.useVisitFrequency ? await getFrequentDomains() : new Set();
       const groups = buildRecoveryPlan(known, settings, minTier, frequent);
+      // Fill in from what has already been discovered, so a second visit renders complete
+      // instead of blank-then-populated. Anything still missing is probed on request.
+      applyPasswordPages(groups, await knownChangePasswordSupport());
       return { groups, state: { ...state, minTier }, progress: recoveryProgress(groups, state.done) };
     }
+
+    case 'findPasswordPages':
+      return findPasswordPages(message.domains ?? []);
 
     case 'markRecoveryStep':
       return markRecoveryStep(message.domain, Boolean(message.done));
@@ -293,24 +301,25 @@ async function getOverview() {
   const state = await getState();
   const sessions = likelyLoggedIn(await discoverSessions());
 
-  const sites = sessions
-    .map((session) => {
-      const { tier, reason, mode } = resolveTier(session.domain, settings);
-      return {
-        domain: session.domain,
-        tier,
-        tierReason: reason,
-        mode,
-        cookieCount: session.cookieCount
-      };
-    })
-    .sort((a, b) => {
-      const order = { critical: 0, high: 1, medium: 2, low: 3 };
-      return order[a.tier] - order[b.tier] || a.domain.localeCompare(b.domain);
-    });
+  const discovered = sessions.map((session) => {
+    const { tier, reason, mode } = resolveTier(session.domain, settings);
+    return {
+      domain: session.domain,
+      tier,
+      tierReason: reason,
+      mode,
+      cookieCount: session.cookieCount
+    };
+  });
 
   const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   const host = activeTab?.url ? hostnameFromUrl(activeTab.url) : null;
+
+  // A profile carries hundreds of cookied domains and a dozen the user would recognise.
+  // Split them so the recognisable ones are what gets seen; the run is unaffected, and
+  // the popup still states the true total next to the button that acts on it.
+  const { used, other, narrowed } = partitionSites(discovered, await relevanceSignals(settings));
+  const sites = [...used, ...other];
 
   const bundle = await getStoredBundle();
   const recipes = await getActiveRecipes();
@@ -319,6 +328,14 @@ async function getOverview() {
     settings,
     currentDomain: host ? registrableDomain(host) : null,
     sites,
+    // The same rows, pre-split for display. `sites` stays whole so nothing downstream has
+    // to know about the split to be correct.
+    relevance: {
+      used: used.map((s) => s.domain),
+      otherCount: other.length,
+      narrowed,
+      canRankByFrequency: settings.useVisitFrequency
+    },
     lastReport: state.lastReport,
     // A breadcrumb still present means a previous run never reached its end - the browser
     // died mid-flight. It names the exact call that was running.
@@ -330,6 +347,89 @@ async function getOverview() {
       fetchedAt: bundle?.fetchedAt ?? null
     }
   };
+}
+
+/**
+ * Attach discovered password pages to a recovery plan.
+ *
+ * The curated table wins where it has an entry — a hand-checked URL that lands on the
+ * right page beats a redirect we have only proved is not a 404. This fills the gaps, which
+ * is most of the list: the table covers two dozen domains and a real profile has hundreds.
+ *
+ * @param {any[]} groups
+ * @param {Record<string, import('../core/change-password.js').ProbeResult>} support
+ */
+function applyPasswordPages(groups, support) {
+  for (const group of groups) {
+    for (const step of group.steps) {
+      if (step.passwordUrl) {
+        step.passwordUrlSource = 'known';
+        continue;
+      }
+      const found = support[step.domain];
+      if (found?.supported && found.url) {
+        step.passwordUrl = found.url;
+        step.passwordUrlSource = 'discovered';
+      }
+    }
+  }
+}
+
+/**
+ * Probe for password pages, a few at a time.
+ *
+ * Changing the password is the only revocation primitive that exists on most stacks — no
+ * protocol lets an extension end a session it did not create — so finding that page is
+ * the single most useful thing this can do for someone who has been compromised.
+ *
+ * Concurrency is capped because the recovery plan asks about every account at once, and
+ * a burst of requests at a dozen sites is both slow and rude. Results are cached by the
+ * platform layer, so this is a first-visit cost only.
+ *
+ * @param {string[]} domains
+ * @returns {Promise<Record<string, string>>}
+ */
+async function findPasswordPages(domains) {
+  /** @type {Record<string, string>} */
+  const found = {};
+  const queue = [...new Set(domains)].slice(0, 40);
+  const workers = Array.from({ length: Math.min(4, queue.length) }, async () => {
+    for (let next = queue.shift(); next; next = queue.shift()) {
+      const result = await probeChangePassword(next);
+      if (result.supported && result.url) found[next] = result.url;
+    }
+  });
+
+  await Promise.all(workers);
+  return found;
+}
+
+/**
+ * Evidence that the user actually uses a site, assembled from what we already hold.
+ *
+ * Deliberately no chrome.history: it would hand us every page ever opened, with
+ * timestamps, to answer a question about domains. Every signal here is either free
+ * (tabs we can already read) or already opt-in (top sites).
+ *
+ * @param {any} settings
+ * @returns {Promise<import('../core/relevance.js').RelevanceSignals>}
+ */
+async function relevanceSignals(settings) {
+  /** @type {Set<string>} */
+  const open = new Set();
+  try {
+    for (const tab of await chrome.tabs.query({})) {
+      const host = tab.url ? hostnameFromUrl(tab.url) : null;
+      if (host) open.add(registrableDomain(host));
+    }
+  } catch {
+    // Worst case the list is ordered without this signal.
+  }
+
+  const frequent = settings.useVisitFrequency ? await getFrequentDomains() : new Set();
+  const acted = new Set((await readCoverage()).map((entry) => entry.domain));
+
+  return { open, frequent, acted };
 }
 
 /** Keep Chrome's idle threshold in step with the configured timeout. */

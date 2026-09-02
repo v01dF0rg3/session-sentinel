@@ -93,11 +93,35 @@
     ]
   };
 
+  // Mirrors what the service worker derives from tabs, top sites and past runs. The real
+  // partition is exercised by tests/relevance.test.mjs; this fixture exists so the popup
+  // can be looked at against a profile of realistic size.
+  const openNow = new Set(['youtube.com', 'github.com']);
+  const frequentNow = new Set(['google.com', 'reddit.com']);
+  const actedOn = new Set(['github.com', 'slack.com']);
+
+  const usedDomains = sites
+    .filter(
+      (s) =>
+        openNow.has(s.domain) ||
+        frequentNow.has(s.domain) ||
+        actedOn.has(s.domain) ||
+        s.tier === 'critical' ||
+        s.mode === 'ignored'
+    )
+    .map((s) => s.domain);
+
   const overview = () => ({
     settings,
     sites,
     currentDomain: 'youtube.com',
     lastReport,
+    relevance: {
+      used: usedDomains,
+      otherCount: sites.length - usedDomains.length,
+      narrowed: sites.length - usedDomains.length >= 3,
+      canRankByFrequency: settings.useVisitFrequency
+    },
     recipeStatus: { total: 3, source: 'built-in', bundleVersion: null, fetchedAt: null },
     crashTrail: crashTrail.value
   });
@@ -216,6 +240,19 @@
               }
             }, 40);
           }
+
+          // Real measured answers, so the preview shows the mix the user will actually
+          // see: some found, some not. discord.com and chase.com genuinely do not serve
+          // the well-known endpoint, and pretending otherwise would flatter the feature.
+          case 'findPasswordPages':
+            return delay(
+              Object.fromEntries(
+                (message.domains ?? [])
+                  .filter((d) => ['aol.com', 'azure.com'].includes(d))
+                  .map((d) => [d, `https://${d}/.well-known/change-password`])
+              ),
+              600
+            );
 
           case 'markRecoveryStep': {
             const set = new Set(recovery.done);

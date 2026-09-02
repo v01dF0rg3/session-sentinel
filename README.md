@@ -8,6 +8,47 @@ when the screen locks, or when the browser closes.
 It works out of the box. Install it, accept the permission prompt, and it protects your
 high-risk accounts with no configuration.
 
+## What it cannot do, stated up front
+
+It cannot make a website revoke your other sessions. Nothing installed in a browser can.
+
+An extension may only do what a person at the keyboard may do, and "sign out everywhere"
+is a button most sites simply have not built. The mechanisms that could change that —
+[Shared Signals / RISC](https://openid.net/wg/sse/), CAEP, device-bound session
+credentials — are either server-to-server or live inside the browser itself. There is no
+protocol by which a site grants an extension that power, and inventing one would mean
+shipping a spec no site implements.
+
+So the promise is a ladder, not a guarantee. The extension climbs as high as each site
+allows and then tells you which rung it reached:
+
+| Rung | What happened | How often |
+| --- | --- | --- |
+| 1. Cleared | Session material destroyed on this device | Always |
+| 2. Signed out | The site's own sign-out ran, ending the session server-side | Often |
+| 3. Revoked | Every session, everywhere, ended | Only where the site offers it |
+
+A result is never reported stronger than the evidence for it. Clearing cookies without
+reaching rung 2 *orphans* a session rather than ending it: the token stays alive and
+listed on the site, you just can no longer see it. The report says so in those words.
+
+### When rung 3 is missing
+
+On most stacks, **changing your password is the revocation** — it is what invalidates
+sessions on devices you no longer hold. It is the only universal primitive that actually
+exists, so it is what the "Been hacked?" walkthrough is built around.
+
+Finding that page used to depend on a hand-written table of two dozen domains. It now also
+uses [`/.well-known/change-password`](https://w3c.github.io/webappsec-change-password-url/),
+a deployed convention that lets a site point at its own password page. Measured against 30
+popular domains: **11 serve it**, 14 return a clean 404, and 5 answer `200` for URLs that
+cannot exist — those last are refused rather than guessed at, because sending you to a
+soft-404 page during a break-in is worse than admitting we do not know.
+
+That is not most of the web. It is a third of it, for free, on top of the curated list —
+and the honest framing is that the remainder still needs you to find the security settings
+yourself, which the walkthrough will say rather than pretend otherwise.
+
 ## Loading it
 
 1. Open `chrome://extensions`

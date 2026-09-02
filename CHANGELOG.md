@@ -1,5 +1,68 @@
 # Changelog
 
+## 0.22.0 — 1 September 2026
+
+### The list is a list again, not a wall
+
+Cookie discovery finds every registrable domain with an auth-looking cookie. On a real
+profile that is hundreds, and the popup showed all of them — so the accounts that mattered
+sat somewhere below forty forums the user last opened in 2023.
+
+The list is now split rather than trimmed. Sites are shown first when there is evidence
+the user actually uses them:
+
+- open in a tab right now
+- among Chrome's top sites (optional permission, still off by default)
+- previously signed out of with this extension
+- a known high-value account, whether or not it shows signs of use — a bank buried behind
+  a disclosure is a worse failure than a list three rows longer
+
+Everything else collapses behind **"Show N other sites with sign-in cookies"**, which
+states the count rather than saying "more": that a profile carries two hundred other
+cookied domains is itself information. Shown sites are grouped under sticky tier headings,
+so a scrolled list stays legible instead of reverting to an undifferentiated column.
+
+**This changes what is displayed, not what is done.** The site count above the list still
+reads the whole set, "Log out of all sessions" still acts on the whole set, and typing in
+the filter searches the whole set — a filter that could not reach a site because it sat
+behind a disclosure would be maddening. A display filter that quietly narrowed the run
+would be the same class of lie as reporting `revoked` for an orphaned session.
+
+### Finding the password page without a hand-written table
+
+The extension cannot make a site revoke its sessions, and neither can anything else
+installed in a browser. Every mechanism that could — Shared Signals, RISC, CAEP,
+device-bound credentials — is server-to-server or lives in the browser itself. What is
+true is that on most stacks **changing the password is the revocation**: it is what
+invalidates sessions on devices the user no longer holds.
+
+Until now that link came from a curated table of two dozen domains, and everything outside
+it got "check its account security settings" — advice-shaped, but not actually advice.
+
+The "Been hacked?" walkthrough now also asks sites directly, via
+`/.well-known/change-password`. Measured against 30 popular domains: 11 serve it, 14
+return a clean 404, and 5 answer `200` for URLs that cannot possibly exist.
+
+- The curated table still wins where it has an entry. A hand-checked URL beats a redirect
+  we have only proved is not a 404.
+- Sites with no real 404s are refused, not guessed at. The spec's own control probe asks
+  for a deliberately impossible URL first; if *that* returns 200, the site's status codes
+  carry no information. Skipping this check is how the Proton 404-tab bug happened, and
+  opening a blank error page during a break-in is worse than admitting we do not know.
+- The apex is not the last word. `google.com` 404s while `accounts.google.com` serves it,
+  so `accounts.` and `www.` are tried before giving up.
+- A network failure is never cached as absence. Offline is a fact about the moment.
+- The user is handed the well-known URL itself, not a resolved one — their browser follows
+  the redirect with their own cookies and lands signed in, where ours would have followed
+  the logged-out branch to a login screen.
+- Where a link was discovered rather than curated, the row says so.
+
+### Also
+
+- README now leads with what the extension *cannot* do, the three-rung ladder, and the
+  measured numbers behind it, rather than leaving that to the results table.
+- 115 tests (up from 105): `tests/relevance.test.mjs`, `tests/change-password.test.mjs`.
+
 ## 0.21.1 — 1 September 2026
 
 ### Fixed

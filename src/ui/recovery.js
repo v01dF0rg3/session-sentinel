@@ -32,6 +32,41 @@ function byId(id) {
 async function load() {
   data = await send({ type: 'getRecovery' });
   render();
+  void discoverPasswordPages();
+}
+
+/**
+ * Fill in the password pages nobody wrote down for us.
+ *
+ * On most stacks, changing the password IS the revocation — it is what invalidates the
+ * sessions on devices the user no longer holds. No protocol lets an extension end a
+ * session it did not create, so this link is the most useful thing this page can offer,
+ * and until now it existed only for the two dozen sites in a hand-written table.
+ *
+ * It runs after the first render, deliberately. The plan is readable immediately and the
+ * links sharpen a moment later; making someone stare at a spinner during a break-in would
+ * be a poor trade for a slightly tidier load.
+ */
+async function discoverPasswordPages() {
+  const missing = data.groups
+    .flatMap((/** @type {any} */ g) => g.steps)
+    .filter((/** @type {any} */ s) => !s.passwordUrl)
+    .map((/** @type {any} */ s) => s.domain);
+
+  if (!missing.length) return;
+
+  const found = await send({ type: 'findPasswordPages', domains: missing });
+  if (!found || !Object.keys(found).length) return;
+
+  for (const group of data.groups) {
+    for (const step of group.steps) {
+      if (!step.passwordUrl && found[step.domain]) {
+        step.passwordUrl = found[step.domain];
+        step.passwordUrlSource = 'discovered';
+      }
+    }
+  }
+  render();
 }
 
 function render() {
@@ -134,6 +169,13 @@ function renderStep(step, isDone, isNext) {
   if (!step.passwordUrl) {
     const hint = document.createElement('p');
     hint.textContent = 'No direct link known — look under account or security settings once the site opens.';
+    text.append(hint);
+  } else if (step.passwordUrlSource === 'discovered') {
+    // Say where the link came from. It was found by asking the site, not checked by hand,
+    // and a link that lands somewhere unexpected is less alarming when it was not promised
+    // to be exact.
+    const hint = document.createElement('p');
+    hint.textContent = 'Link found by asking the site directly.';
     text.append(hint);
   }
 
