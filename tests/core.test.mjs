@@ -9,7 +9,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { registrableDomain } from '../src/core/domain.js';
+import { hostnameFromUrl, registrableDomain } from '../src/core/domain.js';
 import { atLeast, classify, looksLikeSessionCookie } from '../src/core/risk.js';
 import { buildPlan, resolveTier } from '../src/core/plan.js';
 import { expandForIdentity } from '../src/core/identity.js';
@@ -426,4 +426,26 @@ test('a site with no known session page recommends security review without guara
   assert.equal(unknown.url, undefined);
   // Hedged deliberately: absence from a 23-entry list is not proof the site has nothing.
   assert.match(unknown.message, /check its account security settings/i);
+});
+
+test('only real websites have a hostname worth reading', () => {
+  // The extension's own pages are the trap. `new URL(...).hostname` on a
+  // chrome-extension:// URL returns the extension id, and a diagnostics check that used it
+  // directly reported "reads the active tab as fjhlpccnhoagchhhomaaconkhfocnjag" as a
+  // success — run, of course, from an extension page. Anything that is not a website has
+  // no site to act on, and the rule belongs here rather than at each call site.
+  assert.equal(hostnameFromUrl('https://github.com/settings'), 'github.com');
+  assert.equal(hostnameFromUrl('http://example.com'), 'example.com');
+
+  for (const url of [
+    'chrome-extension://fjhlpccnhoagchhhomaaconkhfocnjag/src/ui/diagnostics.html',
+    'chrome://extensions',
+    'about:blank',
+    'file:///C:/notes.txt',
+    'javascript:alert(1)',
+    'data:text/html,hi',
+    'not a url'
+  ]) {
+    assert.equal(hostnameFromUrl(url), null, url);
+  }
 });

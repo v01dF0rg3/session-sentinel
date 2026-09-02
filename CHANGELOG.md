@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.34.1 — 2 September 2026
+
+Both fixes come from running the diagnostics page in an installed Chrome 152. The suite
+reported 14/14 passing, and two of those passes were saying something untrue.
+
+### "217 look signed in" contradicted the rest of the product
+
+Cookie enumeration reported `513 sites with cookies, 217 look signed in`. That count is
+`likelyLoggedIn` — the deliberately generous safety-wipe scope — on a profile with **five
+confirmed accounts**. Describing it as looking signed in invites exactly the reading
+everything else refuses, in the one report a user is most likely to copy and paste.
+
+It now reads `513 sites with cookies; 217 carry session-looking cookies (safety-wipe
+candidates, not confirmed accounts)`.
+
+### Current-site detection reported the extension's own id as a website
+
+Run from the diagnostics page, the check reported *"reads the active tab as
+fjhlpccnhoagchhhomaaconkhfocnjag"* — and counted it a pass. It used
+`new URL(tab.url).hostname` directly, which returns the extension id for a
+`chrome-extension://` URL.
+
+`hostnameFromUrl` has always refused non-http(s) schemes, and the popup uses it, so the
+popup was never wrong. Only this check reimplemented the rule and dropped it. It now uses
+the shared helper and reports honestly that the active tab is not a website.
+
+The scheme rule had no test despite being the thing that keeps `chrome://`, `file://`,
+`data:` and the extension's own pages out of anything that acts on a site. It has one now.
+
 ## 0.34.0 — 2 September 2026
 
 ### Security results no longer promise what the extension cannot observe

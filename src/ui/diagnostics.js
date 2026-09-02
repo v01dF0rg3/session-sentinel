@@ -19,7 +19,7 @@ import { discoverSessions, likelyLoggedIn, wipeSite } from '../platform/sessions
 import { getActiveRecipes } from '../platform/recipe-store.js';
 import { DEPTH_DATA_TYPES } from '../core/policy.js';
 import { pageStep } from '../engine/step-runner.js';
-import { registrableDomain } from '../core/domain.js';
+import { hostnameFromUrl, registrableDomain } from '../core/domain.js';
 import { formatLog } from '../platform/eventlog.js';
 import { METHOD_LABELS, describeCoverage } from '../core/coverage.js';
 import { authCookieNames, probeAnonymousCookies } from '../platform/incognito-probe.js';
@@ -148,7 +148,14 @@ async function run() {
       return { status: 'skip', detail: 'no cookies in this profile yet — sign into a site and re-run' };
     }
     // Counts only. A report the user might paste must never carry cookie contents.
-    return { detail: `${sessions.length} sites with cookies, ${signedIn.length} look signed in` };
+    // NOT "look signed in". This count is the deliberately generous wipe scope, and saying
+    // it looks like sign-in invites exactly the reading the rest of the product refuses:
+    // a profile reporting 217 here had 5 confirmed accounts.
+    return {
+      detail:
+        `${sessions.length} sites with cookies; ${signedIn.length} carry session-looking ` +
+        'cookies (safety-wipe candidates, not confirmed accounts)'
+    };
   });
 
   await check('Cookie stores (covers incognito when allowed)', async () => {
@@ -262,8 +269,16 @@ async function run() {
   await check('Current site detection', async () => {
     const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     if (!tab?.url) return { status: 'skip', detail: 'no active tab URL available' };
-    const host = new URL(tab.url).hostname;
-    return { detail: host ? `reads the active tab as ${registrableDomain(host)}` : 'active tab has no host' };
+
+    // Through hostnameFromUrl rather than new URL().hostname, which happily returns the
+    // extension's own id for a chrome-extension:// page. Run from this very page, the
+    // check used to report "reads the active tab as <extension id>" as a success. The
+    // popup was always right; only this check reimplemented the rule and dropped it.
+    const host = hostnameFromUrl(tab.url);
+    if (!host) {
+      return { status: 'skip', detail: 'active tab is not a website, so there is no site to read' };
+    }
+    return { detail: `reads the active tab as ${registrableDomain(host)}` };
   });
 
   el.run.disabled = false;
