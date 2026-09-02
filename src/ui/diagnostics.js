@@ -389,7 +389,7 @@ let signInRows = [];
 
 async function loadSignIn() {
   signInRows = (await chrome.runtime.sendMessage({ type: 'explainSignedIn' })) ?? [];
-  void reportSignInMethod();
+  reportSignInMethod();
 
   const headline = document.getElementById('signin-headline');
   const list = document.getElementById('signin-list');
@@ -433,25 +433,19 @@ document.getElementById('signin-copy')?.addEventListener('click', async () => {
 loadSignIn();
 
 /**
- * Say which method is deciding, and prove it rather than claim it.
+ * Say which method is deciding, and how far it can see.
  *
- * A site's session cookie is not evidence of an account — bloomberg.com hands
- * `_session_id_backup` to strangers — so the extension asks sites what they give someone
- * with no account and subtracts that. Whether it CAN ask depends on Chrome exposing a
- * forbidden response header, which is a question about this browser. github.com is the
- * yardstick: a stranger gets `_gh_sess`, `_octo` and `logged_in`, never `user_session`.
+ * The honest version of a line that previously offered to test whether sites could be
+ * asked directly. They cannot: Chrome strips `Set-Cookie` from the Headers object, and
+ * `getSetCookie()` returns nothing even for a same-origin `basic` response, where nothing
+ * is CORS-filtered. Reading it needs permission to observe all network traffic.
  */
-async function reportSignInMethod() {
+function reportSignInMethod() {
   const line = document.getElementById('signin-method');
   if (!line) return;
-  line.textContent = 'Checking whether this browser lets the extension ask sites…';
-
-  try {
-    const result = await chrome.runtime.sendMessage({ type: 'probeSelfTest' });
-    line.textContent = result?.works
-      ? `Asking sites works. github.com gives a stranger: ${result.names.join(', ')}.`
-      : 'This browser does not expose Set-Cookie to the extension, so sites cannot be asked directly. Falling back to what each site already had the first time it was seen, which cannot settle sites you were already signed into before installing.';
-  } catch {
-    line.textContent = 'Could not check.';
-  }
+  line.textContent =
+    'A session cookie alone is not evidence of an account — bloomberg.com hands anonymous ' +
+    'visitors one that is httpOnly, Secure and opaque. So a cookie counts only if it ' +
+    'appeared after this extension first saw the site. Sites you were already signed into ' +
+    'before installing cannot be settled that way, so those rows ask you instead.';
 }

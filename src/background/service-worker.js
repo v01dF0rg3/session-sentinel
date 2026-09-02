@@ -29,7 +29,8 @@ import { clearCoverage, readCoverage } from '../platform/coverage.js';
 import { summariseCoverage } from '../core/coverage.js';
 import { partitionSites } from '../core/relevance.js';
 import { knownChangePasswordSupport, probeChangePassword } from '../platform/change-password.js';
-import { anonBaseline, knownBaselines, probeSelfTest, recordFirstSight } from '../platform/anon-baseline.js';
+import { recordFirstSight } from '../platform/first-sight.js';
+import { getVerdicts, setVerdict } from '../platform/site-verdict.js';
 import { judgeSignIn } from '../core/anon-baseline.js';
 
 const RECIPE_ALARM = 'sentinel-recipe-refresh';
@@ -272,11 +273,9 @@ async function handleMessage(message) {
     case 'explainSignedIn':
       return explainSignedIn();
 
-    case 'resolveSignIn':
-      return resolveSignIn(message.domains ?? []);
-
-    case 'probeSelfTest':
-      return probeSelfTest();
+    case 'setSiteVerdict':
+      await setVerdict(message.domain, message.verdict ?? null);
+      return { ok: true };
 
     case 'getEventLog':
       return readLog();
@@ -347,10 +346,9 @@ async function getOverview() {
       otherCount: other.length,
       narrowed,
       canRankByFrequency: settings.useVisitFrequency,
-      // Sites whose cookies look session-bearing but which nothing has ruled in or out.
-      // The popup asks for these to be resolved after it has drawn, so a network round
-      // trip never delays the list.
-      unresolved: signals.unresolved ?? []
+      // Sites whose cookies look session-bearing but which nothing has settled. The popup
+      // asks the user about these rather than guessing.
+      unconfirmed: [...(signals.unconfirmed ?? [])]
     },
     lastReport: state.lastReport,
     // A breadcrumb still present means a previous run never reached its end - the browser
@@ -363,34 +361,6 @@ async function getOverview() {
       fetchedAt: bundle?.fetchedAt ?? null
     }
   };
-}
-
-/**
- * Ask the named sites what they hand a stranger, so the next scan can judge them.
- *
- * Answers are cached by the platform layer and describe the site rather than the user, so
- * this is a first-sight cost per domain. Concurrency is capped: a profile can produce
- * dozens of unresolved sites at once and a burst of requests would be both slow and rude.
- *
- * @param {string[]} domains
- * @returns {Promise<{ resolved: number, usable: number }>}
- */
-async function resolveSignIn(domains) {
-  const queue = [...new Set(domains)].slice(0, 60);
-  let usable = 0;
-
-  const workers = Array.from({ length: Math.min(4, queue.length) }, async () => {
-    for (let next = queue.shift(); next; next = queue.shift()) {
-      const baseline = await anonBaseline(next);
-      if (baseline.usable) usable += 1;
-    }
-  });
-
-  await Promise.all(workers);
-  // `usable` is the honest measure of whether asking sites works at all in this browser:
-  // Set-Cookie is a forbidden response header, and whether Chrome exposes it to an
-  // extension through getSetCookie() is a fact about a real browser, not a deduction.
-  return { resolved: domains.length, usable };
 }
 
 /**
@@ -487,31 +457,34 @@ async function relevanceSignals(settings, sessions) {
   // what the site gives someone with no account.
   const candidates = sessions.filter((session) => session.signedIn);
   const { sight, added } = await recordFirstSight(candidates);
-  const baselines = await knownBaselines();
+  const verdicts = await getVerdicts();
 
   /** @type {Set<string>} */
   const signedIn = new Set();
   /** @type {Set<string>} */
   const unconfirmed = new Set();
-  /** @type {string[]} */
-  const unresolved = [];
 
   for (const site of candidates) {
-    // A domain seen for the first time on THIS pass has a baseline that was written
-    // microseconds ago from the very cookies being judged. Using it would rule out
-    // everything, grade every site anonymous, and leave nothing marked unknown - so the
-    // probe that settles it would never run. It is evidence from the next scan onwards.
-    const everSeen = added.has(site.domain) ? [] : sight[site.domain];
-    const verdict = judgeSignIn(site.authNames, baselines[site.domain] ?? null, everSeen);
-
-    if (verdict === 'signedIn') signedIn.add(site.domain);
-    else if (verdict === 'unknown') {
-      unresolved.push(site.domain);
-      unconfirmed.add(site.domain);
+    // The user's own answer settles it and is never re-litigated. Four rules in a row got
+    // this wrong from cookies alone; "I have never made an eBay account" is not a
+    // heuristic anyone can improve on.
+    const stated = verdicts[site.domain];
+    if (stated === 'notMine') continue;
+    if (stated === 'mine') {
+      signedIn.add(site.domain);
+      continue;
     }
+
+    // A domain seen for the first time on THIS pass has a baseline written microseconds ago
+    // from the very cookies being judged. Using it would rule out everything and grade every
+    // site anonymous. It is evidence from the next scan onwards.
+    const everSeen = added.has(site.domain) ? [] : sight[site.domain];
+
+    if (judgeSignIn(site.authNames, null, everSeen) === 'signedIn') signedIn.add(site.domain);
+    else if (!everSeen?.length || added.has(site.domain)) unconfirmed.add(site.domain);
   }
 
-  return { signedIn, unconfirmed, open, frequent, acted, unresolved };
+  return { signedIn, unconfirmed, open, frequent, acted };
 }
 
 /** Keep Chrome's idle threshold in step with the configured timeout. */

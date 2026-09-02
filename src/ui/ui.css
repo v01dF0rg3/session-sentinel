@@ -310,3 +310,9 @@ ul.plain li:last-child { margin-bottom: 0; }
 table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--border); }
 th { color: var(--text-muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+
+/* "Yours?" — shown only on rows the automatic rules could not settle. Always visible
+   rather than revealed on hover: a question the user cannot see is one they never answer,
+   and the list stays wrong until they do. */
+.verdict { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.verdict .muted { font-size: 11px; }

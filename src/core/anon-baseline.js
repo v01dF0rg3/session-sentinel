@@ -17,10 +17,21 @@
  * no account. No rule over names and flags can separate the two, because the difference is
  * not in the cookie. It is in whether the site issued it before or after a sign-in.
  *
- * THE DIRECT TEST.
+ * THE TEST.
  *
- * Ask the site what it gives a stranger, and subtract that from what the user actually
- * has. What remains was issued to *them*, in response to something a stranger cannot do.
+ * Subtract what the site gives someone with no account from what the user actually has.
+ * What remains was issued to *them*, in response to something a stranger cannot do.
+ *
+ * Asking the site directly turned out to be impossible: Chrome strips `Set-Cookie` from the
+ * Headers object, and `getSetCookie()` returns nothing even for a same-origin `basic`
+ * response, where nothing is CORS-filtered. Reading it needs `chrome.webRequest` with
+ * `extraHeaders` — permission to observe all network traffic, which is a large thing for a
+ * privacy tool to take in exchange for tidying a list.
+ *
+ * So the stranger's cookies are learned by watching instead: whatever a domain already had
+ * the first time it was scanned predates anything we could have observed, and proves
+ * nothing. A cookie that appears later is the sign-in. The `baseline` argument stays for
+ * the day that becomes knowable; today it is always null.
  *
  *     bloomberg.com  stranger gets {_pxhd, session_id, _session_id_backup, agent_id,
  *                    session_key}; the user has exactly those. Remainder: nothing.
@@ -61,7 +72,7 @@
  * Decide whether a site's cookies show an account, given what strangers receive.
  *
  * @param {string[]} authGradeNames Names in the user's jar that look session-bearing.
- * @param {Baseline | null} baseline What a stranger gets, if we have asked.
+ * @param {Baseline | null} baseline Reserved: what a stranger receives, if ever knowable.
  * @param {string[]} [everSeen] Auth-grade names present the first time we saw this domain.
  * @returns {SignInVerdict}
  */

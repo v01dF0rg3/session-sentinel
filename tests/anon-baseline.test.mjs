@@ -98,7 +98,7 @@ function fakeStorage(initial = {}) {
 
 test('first sight names which domains are new, and never revises one', async () => {
   fakeStorage();
-  const { recordFirstSight } = await import('../src/platform/anon-baseline.js');
+  const { recordFirstSight } = await import('../src/platform/first-sight.js');
 
   const first = await recordFirstSight([{ domain: 'a.example', authNames: ['sid'] }]);
   assert.deepEqual([...first.added], ['a.example'], 'new on the pass that records it');
@@ -120,4 +120,21 @@ test('first sight names which domains are new, and never revises one', async () 
     'signedIn',
     'the cookie that arrived after first sight is the sign-in'
   );
+});
+
+// --- the user's own answer -----------------------------------------------------------
+
+test('a stated answer is remembered and can be taken back', async () => {
+  // The escape hatch that lets the automatic rules be imperfect. Four rules in a row were
+  // wrong from cookies alone; "I have never made an eBay account" is not a heuristic
+  // anyone can improve on, so it is respected permanently rather than re-derived.
+  fakeStorage();
+  const { getVerdicts, setVerdict } = await import('../src/platform/site-verdict.js');
+
+  await setVerdict('bloomberg.com', 'notMine');
+  await setVerdict('github.com', 'mine');
+  assert.deepEqual(await getVerdicts(), { 'bloomberg.com': 'notMine', 'github.com': 'mine' });
+
+  await setVerdict('bloomberg.com', null);
+  assert.deepEqual(await getVerdicts(), { 'github.com': 'mine' }, 'null forgets it');
 });

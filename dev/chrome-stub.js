@@ -107,9 +107,23 @@
 
   // Only evidence of an account qualifies. openNow and frequentNow order the list but no
   // longer join it - being on ebay.com's sign-in page is not being signed into ebay.com.
+  sites.push({ domain: 'bloomberg.com', tier: 'low', tierReason: 'known site', mode: 'default', cookieCount: 5 });
+
   const usedDomains = sites
-    .filter((s) => signedInNow.has(s.domain) || actedOn.has(s.domain) || s.mode === 'ignored')
+    .filter((s) => signedInNow.has(s.domain) || actedOn.has(s.domain) || s.mode === 'ignored' || s.domain === 'bloomberg.com')
     .map((s) => s.domain);
+
+  // The real overview attaches these via core/relevance.js. The preview needs them so the
+  // "Yours?" control, which keys off an unconfirmed reason, is actually exercised.
+  for (const site of sites) {
+    site.reasons = signedInNow.has(site.domain)
+      ? ['signed in here']
+      : actedOn.has(site.domain)
+        ? ['you have signed out of this before']
+        : site.domain === 'bloomberg.com'
+          ? ['cookies look like a sign-in, not confirmed yet']
+          : [];
+  }
 
   const overview = () => ({
     settings,
@@ -121,7 +135,7 @@
       otherCount: sites.length - usedDomains.length,
       narrowed: sites.length - usedDomains.length >= 3,
       canRankByFrequency: settings.useVisitFrequency,
-      unresolved: ['bloomberg.com']
+      unconfirmed: ['bloomberg.com']
     },
     recipeStatus: { total: 3, source: 'built-in', bundleVersion: null, fetchedAt: null },
     crashTrail: crashTrail.value
@@ -319,13 +333,12 @@
               { domain: 'slack.com', strong: ['d'], moderate: ['x'] }
             ], 60);
 
-          // The measured answer for github.com, so the panel is checked against the case
-          // it exists to report.
-          case 'probeSelfTest':
-            return delay({ works: true, names: ['_gh_sess', '_octo', 'logged_in'] }, 500);
-
-          case 'resolveSignIn':
-            return delay({ resolved: (message.domains ?? []).length, usable: 0 }, 300);
+          case 'setSiteVerdict':
+            if (message.verdict === 'notMine') {
+              const i = sites.findIndex((x) => x.domain === message.domain);
+              if (i >= 0) sites.splice(i, 1);
+            }
+            return delay({ ok: true }, 20);
 
           case 'clearEventLog':
             return delay({ ok: true }, 10);

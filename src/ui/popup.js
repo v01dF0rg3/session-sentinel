@@ -61,29 +61,6 @@ function setStatus(text, tone) {
 async function load() {
   overview = await send({ type: 'getOverview' });
   render();
-  void resolveUnknownSites();
-}
-
-/**
- * Settle the sites whose cookies look session-bearing but prove nothing either way.
- *
- * A site is only called signed in once something has ruled its cookies in or out — and
- * with nothing to compare against, every session cookie looks like an account. That is how
- * bloomberg.com, which hands `_session_id_backup` to strangers, ended up on a list headed
- * SIGNED IN. Resolving means asking those sites what they give someone with no account.
- *
- * It runs after the first render and never blocks it. Answers are cached per domain, so
- * this is a first-sight cost that quietly disappears.
- */
-async function resolveUnknownSites() {
-  const unresolved = overview?.relevance?.unresolved ?? [];
-  if (!unresolved.length) return;
-
-  const result = await send({ type: 'resolveSignIn', domains: unresolved });
-  if (!result?.usable) return;
-
-  overview = await send({ type: 'getOverview' });
-  render();
 }
 
 function render() {
@@ -284,9 +261,54 @@ function buildSiteRow(site) {
     act(`Signing out of ${site.domain}...`, { type: 'runSite', domain: site.domain });
   });
 
-  actions.append(logout, buildKeepControl(site.domain, site.mode === 'ignored', 'Keep'));
+  // A site nothing could settle gets asked about instead of guessed at. Four rules in a
+  // row were wrong from cookies alone, and the user is the only party who actually knows
+  // whether they have an account. One answer, respected permanently.
+  if (site.reasons?.[0]?.startsWith('cookies')) {
+    actions.append(buildVerdictControl(site.domain));
+  } else {
+    actions.append(logout, buildKeepControl(site.domain, site.mode === 'ignored', 'Keep'));
+  }
+
   row.append(badge, name, actions);
   return row;
+}
+
+/**
+ * "Is this yours?" — the two answers, on a row that cannot be settled automatically.
+ *
+ * Worded as a question about the account rather than about the extension, because that is
+ * the thing the user knows. "Not mine" hides the site for good; it does not exempt it from
+ * a wipe, which is a different decision made by the Keep control.
+ *
+ * @param {string} domain
+ */
+function buildVerdictControl(domain) {
+  const wrap = document.createElement('span');
+  wrap.className = 'verdict';
+
+  const label = document.createElement('span');
+  label.className = 'muted';
+  label.textContent = 'Yours?';
+  wrap.append(label);
+
+  for (const [verdict, text, title] of [
+    ['mine', 'Yes', 'Treat this as an account of yours from now on'],
+    ['notMine', 'No', 'Stop listing this site. It is still cleared by a full run.']
+  ]) {
+    const button = document.createElement('button');
+    button.className = 'ghost small';
+    button.textContent = text;
+    button.title = title;
+    button.addEventListener('click', async () => {
+      await send({ type: 'setSiteVerdict', domain, verdict });
+      overview = await send({ type: 'getOverview' });
+      render();
+    });
+    wrap.append(button);
+  }
+
+  return wrap;
 }
 
 /**

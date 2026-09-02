@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.27.0 — 2 September 2026
+
+### The probe in 0.26.0 could never have worked
+
+It asked each site what cookies it hands a stranger and subtracted that from the user's
+jar. The idea holds — bloomberg.com gives anonymous visitors `_session_id_backup`, httpOnly
+and Secure and opaque — but the implementation was impossible, and I shipped it without
+checking.
+
+Measured, against a local server returning two `Set-Cookie` headers:
+
+```
+response.type                     'basic'      (same-origin; nothing is CORS-filtered)
+response.headers.getSetCookie()   []
+```
+
+Chrome does not filter `Set-Cookie` out of the Headers object, it removes it. `basic` is
+the unfiltered case, so there is no context — page or extension, same-origin or
+host-permitted — where that call returns anything. Reading those headers needs
+`chrome.webRequest` with `extraHeaders`: permission to observe all network traffic, which
+is a large thing for a privacy tool to take in exchange for tidying a list.
+
+The probe, its cache, and its self-test are gone.
+
+### What replaces it needs no permission at all
+
+An anonymous session cookie is issued on first contact and then sits there. An
+authenticated one appears at the moment of signing in. So a cookie counts as evidence of an
+account only if it **arrived after this extension first saw the site**. Everything already
+present at first sight predates anything we could have watched, and proves nothing.
+
+That covers every sign-in from here on, using only the cookie access the extension already
+has.
+
+### For everything else, the user is asked
+
+The gap is a site the user was already signed into before installing: their auth cookie
+went into the baseline with everything else. Nothing local can separate that, and four
+rules in a row have now been wrong trying to infer it from cookies.
+
+Rows that cannot be settled show **"Yours? Yes / No"**. One answer, respected permanently.
+"No" stops the site being listed; it does not exempt it from a wipe, which is what the Keep
+control is for. This is the escape hatch that lets the automatic rules be imperfect — they
+only have to be right often enough to keep the question short.
+
+### Also
+
+- 141 tests (up from 140).
+- Diagnostics no longer offers to test whether sites can be asked. It states what the rule
+  actually is and what it cannot see.
+
 ## 0.26.1 — 1 September 2026
 
 ### The list came back holding one entry
