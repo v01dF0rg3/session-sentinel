@@ -6,8 +6,8 @@
  * are not the same, and the difference decides whether a recovery works.
  *
  * Email and identity providers come first regardless of how the tier ranks them, because
- * they are the reset vector for everything else. Securing a bank before the mailbox that
- * receives its password-reset link is wasted work — the attacker simply resets it again.
+ * they are reset vectors for many other accounts. Securing a bank before the mailbox that
+ * receives its password-reset link may be undone if the mailbox remains compromised.
  *
  * Categorising is far safer to guess at than a CSS selector: a site in the wrong bucket
  * is handled slightly out of order, not handled wrongly.
@@ -39,7 +39,7 @@ export const CATEGORY_LABELS = {
 /** @type {Record<RecoveryCategory, string>} */
 export const CATEGORY_WHY = {
   identity:
-    'Secure these first. Every other account can be reset through them, so anything you fix before these can simply be taken again.',
+    'Review these first. Email and identity accounts can reset or unlock many other accounts, so leaving them compromised can undo later recovery work.',
   finance: 'Direct loss. Stored cards, transfers, and anything that can move money.',
   infrastructure:
     'Lasting damage. Code, deployments, domains and cloud accounts can be altered in ways that outlive the breach.',

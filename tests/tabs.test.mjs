@@ -140,9 +140,10 @@ test('reloading tabs reloads and never closes or navigates', async () => {
   chrome.tabs.reload = async (id) => { reloaded.push(id); };
 
   const { findTabsForDomain, reloadTabs } = await load();
-  await reloadTabs(await findTabsForDomain('github.com'));
+  const count = await reloadTabs(await findTabsForDomain('github.com'));
 
   assert.deepEqual(reloaded, [10]);
+  assert.equal(count, 1);
   assert.deepEqual(spy.removedTabs, []);
   assert.equal(state.tabs[0].url, 'https://github.com/settings/profile', 'URL is untouched');
 });
@@ -156,7 +157,8 @@ test('a tab that vanishes mid-run does not break the reload', async () => {
   chrome.tabs.reload = async () => { throw new Error('no such tab'); };
 
   const { reloadTabs } = await load();
-  await assert.doesNotReject(() => reloadTabs([10]));
+  const count = await reloadTabs([10]);
+  assert.equal(count, 0);
 });
 
 test('closing the last tab of the last window blanks it instead', async () => {

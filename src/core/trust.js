@@ -15,8 +15,8 @@
  *
  * So navigation is confined to the target site itself, or to a short list of identity
  * providers that legitimately host other sites' logout endpoints. Anything else is
- * refused and reported as "no server-side logout available", which is honest: we could
- * not log the user out without following an untrusted redirect.
+ * refused and reported as an unavailable sign-out attempt, which is honest: we cannot
+ * follow an untrusted redirect merely to reach a logout control.
  *
  * Pure - no chrome.* - so the policy is unit-testable.
  */

@@ -21,25 +21,26 @@ const entry = (domain, outcome, method, attempted = true, at = 1) => ({
   runs: 1
 });
 
-test('the hit rate counts only sites where a logout was attempted', () => {
+test('the reach rate counts only sites where a logout was attempted', () => {
   // A site below the tier threshold was never tried. Counting it as a miss would blame
   // the fallback for a decision the planner made, and make the number meaningless.
   const summary = summariseCoverage([
-    entry('a.com', 'loggedOut', 'path'),
+    entry('a.com', 'logoutAttempted', 'path'),
     entry('b.com', 'cleared', 'none'),
     entry('c.com', 'cleared', 'none', false) // never attempted
   ]);
 
   assert.equal(summary.total, 3, 'all sites are still counted as seen');
   assert.equal(summary.attempted, 2);
-  assert.equal(summary.endedSession, 1);
+  assert.equal(summary.logoutReached, 1);
+  assert.equal(summary.verifiedRevoked, 0);
   assert.equal(summary.clearedOnly, 1);
-  assert.equal(summary.hitRate, 50, 'one of two attempts, not one of three sites');
+  assert.equal(summary.reachRate, 50, 'one of two attempts, not one of three sites');
 });
 
 test('sites where nothing worked are the ones named', () => {
   const summary = summariseCoverage([
-    entry('worked.com', 'loggedOut', 'home'),
+    entry('worked.com', 'logoutAttempted', 'home'),
     entry('failed-a.com', 'cleared', 'none', true, 10),
     entry('failed-b.com', 'cleared', 'none', true, 20),
     entry('never-tried.com', 'cleared', 'none', false)
@@ -52,10 +53,11 @@ test('sites where nothing worked are the ones named', () => {
   );
 });
 
-test('a revoked result counts as ending the session', () => {
+test('a revoked result is counted separately from an unverified attempt', () => {
   const summary = summariseCoverage([entry('a.com', 'revoked', 'recipe')]);
-  assert.equal(summary.endedSession, 1);
-  assert.equal(summary.hitRate, 100);
+  assert.equal(summary.logoutReached, 1);
+  assert.equal(summary.verifiedRevoked, 1);
+  assert.equal(summary.reachRate, 100);
 });
 
 test('failures are counted apart from misses', () => {
@@ -63,21 +65,21 @@ test('failures are counted apart from misses', () => {
   // and folding them together would hide one behind the other.
   const summary = summariseCoverage([
     entry('a.com', 'failed', 'none'),
-    entry('b.com', 'loggedOut', 'recipe')
+    entry('b.com', 'logoutAttempted', 'recipe')
   ]);
 
   assert.equal(summary.failed, 1);
   assert.equal(summary.attempted, 1, 'a failed wipe is not an attempt that missed');
-  assert.equal(summary.hitRate, 100);
+  assert.equal(summary.reachRate, 100);
   assert.equal(summary.needsRecipe.length, 0);
 });
 
 test('which tier did the work is counted, so the fallback can be judged', () => {
   const summary = summariseCoverage([
-    entry('a.com', 'loggedOut', 'recipe'),
-    entry('b.com', 'loggedOut', 'path'),
-    entry('c.com', 'loggedOut', 'path'),
-    entry('d.com', 'loggedOut', 'home'),
+    entry('a.com', 'logoutAttempted', 'recipe'),
+    entry('b.com', 'logoutAttempted', 'path'),
+    entry('c.com', 'logoutAttempted', 'path'),
+    entry('d.com', 'logoutAttempted', 'home'),
     entry('e.com', 'cleared', 'none')
   ]);
 
@@ -86,19 +88,29 @@ test('which tier did the work is counted, so the fallback can be judged', () => 
 
 test('nothing measured yet says so rather than showing a fake rate', () => {
   const empty = summariseCoverage([]);
-  assert.equal(empty.hitRate, null);
+  assert.equal(empty.reachRate, null);
   assert.equal(describeCoverage(empty), null);
 
   const untried = summariseCoverage([entry('a.com', 'cleared', 'none', false)]);
-  assert.equal(untried.hitRate, null);
+  assert.equal(untried.reachRate, null);
   assert.match(describeCoverage(untried), /nothing to measure/);
 });
 
 test('the summary sentence states the real proportion', () => {
   const summary = summariseCoverage([
-    entry('a.com', 'loggedOut', 'path'),
-    entry('b.com', 'loggedOut', 'home'),
+    entry('a.com', 'logoutAttempted', 'path'),
+    entry('b.com', 'logoutAttempted', 'home'),
     entry('c.com', 'cleared', 'none')
   ]);
-  assert.match(describeCoverage(summary), /2 of 3 sites had their session actually ended \(67%\)/);
+  const description = describeCoverage(summary);
+  assert.match(description, /2 of 3 attempts reached a site sign-out route or control \(67%\)/);
+  assert.match(description, /does not prove a copied token was invalidated/i);
+  assert.match(description, /None had separately verified revoke-everywhere behavior/);
+});
+
+test('legacy loggedOut records are treated as attempts, not verified revocations', () => {
+  const summary = summariseCoverage([entry('old.example', 'loggedOut', 'path')]);
+  assert.equal(summary.logoutReached, 1);
+  assert.equal(summary.verifiedRevoked, 0);
+  assert.equal(summary.reachRate, 100);
 });

@@ -202,7 +202,7 @@ async function run() {
     return { detail: `will borrow window ${id}; no window is ever created or closed` };
   });
 
-  // --- script injection, the mechanism behind every server-side logout -----
+  // --- script injection, the mechanism behind website sign-out attempts -----
   await check('Script injection into a page', async () => {
     if (windowCheck.status === 'fail') {
       return { status: 'skip', detail: 'needs the background window, which failed above' };
@@ -227,7 +227,7 @@ async function run() {
       });
 
       return outcome?.result?.ok
-        ? { detail: 'ran in a real page — server-side logout works this way' }
+        ? { detail: 'ran in a real page — website sign-out attempts work this way' }
         : { status: 'fail', detail: `injection returned: ${outcome?.result?.detail ?? 'no result'}` };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -314,9 +314,10 @@ async function loadCoverage() {
   if (!headline || !methods || !gaps) return;
 
   const described = describeCoverage(summary);
-  headline.textContent = described ?? 'Nothing measured yet — log out of a few sites and come back.';
-  headline.style.color =
-    summary.hitRate === null ? 'var(--text-muted)' : summary.hitRate >= 60 ? 'var(--green)' : 'var(--amber)';
+  headline.textContent = described ?? 'Nothing measured yet — attempt sign-out on a few sites and come back.';
+  // Reach is useful engineering evidence, not proof that a stolen token died. Never paint
+  // this metric green based on reach alone.
+  headline.style.color = summary.reachRate === null ? 'var(--text-muted)' : 'var(--amber)';
 
   methods.replaceChildren();
   for (const [method, count] of Object.entries(summary.byMethod).sort((a, b) => b[1] - a[1])) {

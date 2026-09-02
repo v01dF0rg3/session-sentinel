@@ -3,7 +3,7 @@
  *
  * The tier a site lands in decides everything the user never has to configure: whether
  * it is wiped when the browser closes, how long it survives idle, and how hard the
- * engine tries to reach the server-side logout.
+ * engine tries to reach the site's own sign-out.
  */
 
 import { DOMAIN_RISK, KEYWORD_RISK, TLD_RISK } from '../../data/risk-domains.js';

@@ -14,17 +14,16 @@
  *   'individual' - confirmed: sessions are revoked one at a time, no bulk control
  *   'unknown'    - the page exists; whether it has a bulk revoke has not been checked
  *
- * `password` is where the user changes their password. On a site with no bulk revoke this
- * is the only thing that ends every other session at once — and, importantly, it keeps the
- * current window signed in, so it is a better first move than logging out when someone
- * believes they are compromised. Every URL here returned a live page when checked; the few
- * that answer 4xx to a bare script (Facebook, GitLab, PayPal) are the long-standing
- * documented paths and load normally in a browser.
+ * `password` is where the user changes their password if credentials may be exposed. It is
+ * deliberately separate from the session page: providers vary, and a password change must
+ * never be presented as proof that every existing session was revoked. Every URL here
+ * returned a live page when checked; the few that answer 4xx to a bare script (Facebook,
+ * GitLab, PayPal) are long-standing documented paths and load normally in a browser.
  *
  * `reauth: true` means revoking there demands proof of identity - GitHub sends a
- * verification email before it will let you kill a session. Worth telling the user before
- * they click, and a second reason automating this was never realistic: an automated click
- * cannot pass an email challenge.
+ * verification email before it will let you revoke a listed session. Worth telling the
+ * user before they click, and a second reason automating this was never realistic: an
+ * automated click cannot pass an email challenge.
  *
  * Only github.com is marked 'individual', because that is the only one anybody has looked
  * at. Guessing the rest is what produced twelve broken recipes, and the mistake is not

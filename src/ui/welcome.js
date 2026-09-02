@@ -108,7 +108,7 @@ async function finish(automatic) {
 
   byId('finish-note').textContent = automatic
     ? 'Automatic protection is on. You can change or pause it any time from the popup.'
-    : 'Automatic triggers are off. Use the toolbar button to log out whenever you want, and turn them on later in settings.';
+    : 'Automatic triggers are off. Use the toolbar to attempt sign-out or clear local data, and turn schedules on later in settings.';
   /** @type {HTMLButtonElement} */ (byId('finish')).disabled = true;
   /** @type {HTMLButtonElement} */ (byId('manual-only')).disabled = true;
 }

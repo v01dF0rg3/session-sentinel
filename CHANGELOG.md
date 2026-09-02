@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.34.0 — 2 September 2026
+
+### Security results no longer promise what the extension cannot observe
+
+A reached logout URL or clicked sign-out control is now reported as **Sign-out attempted**,
+not **Signed out**. The extension cannot inspect a website's server-side token state, so
+only a separately tested revoke-everywhere recipe may produce the strong result. Reports
+saved by older versions with `loggedOut` or `revoked` values are migrated to unverified
+attempts rather than repeating the old claim.
+
+The recovery flow now starts with a clear instruction to move to a trusted device when
+malware may still be active. It then prioritizes provider-owned session/device review,
+followed by exposed-password changes, MFA, recovery methods, connected apps, and backup
+codes. Password changes are no longer described as universal session revocation.
+
+Browser-close wording now reflects the actual MV3 limit: cleanup at shutdown is best
+effort, and unfinished local cleanup is retried at the next startup. The UI, diagnostics,
+README, architecture notes, store copy, test guide, and development preview use the same
+result model. A regression test rejects the strongest unsafe promises if they return.
+
+- 186 tests (up from 182).
+
 ## 0.33.0 — 2 September 2026
 
 ### Candidates now lead to a real login instead of being manually added

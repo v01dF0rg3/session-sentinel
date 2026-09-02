@@ -29,18 +29,18 @@
           <span class="badge" id="current-tier"></span>
         </div>
         <div class="current-actions">
-          <button id="logout-current" class="primary small" type="button">Log out</button>
+          <button id="logout-current" class="primary small" type="button">Attempt sign-out</button>
           <button id="clear-current" class="ghost small" type="button" title="Delete cookies and storage without contacting the site">Clear data</button>
         </div>
       </div>
-      <label class="keep" id="keep-current-label" title="Excluded from every automatic logout and from &quot;Log out of confirmed accounts&quot;. You can still clear it by hand with the buttons above.">
+      <label class="keep" id="keep-current-label" title="Excluded from every automatic cleanup and from &quot;Attempt sign-out of confirmed accounts&quot;. You can still clear it by hand with the buttons above.">
         <input type="checkbox" id="keep-current" />
-        <span>Never clear this site — stay signed in</span>
+        <span>Never clear this site — keep its local data</span>
       </label>
     </section>
 
     <button id="logout-all" class="primary block" type="button">
-      Log out of confirmed accounts
+      Attempt sign-out of confirmed accounts
     </button>
     <p class="hint" id="scope-hint"></p>
 
@@ -72,7 +72,7 @@
     <footer class="footer">
       <span id="last-run" class="muted"></span>
       <span class="footer-links">
-        <button id="open-recovery" class="link" type="button" title="Work through your accounts in the order that keeps them secured">Been hacked?</button>
+        <button id="open-recovery" class="link" type="button" title="Open the recovery checklist. Use another trusted device if malware may be active here.">Been hacked?</button>
         <button id="open-options" class="link" type="button">Settings</button>
       </span>
     </footer>

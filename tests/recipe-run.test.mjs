@@ -133,9 +133,9 @@ test('a recipe that clicks nothing reports nothing', async () => {
   assert.match(result.detail, /without activating any control/);
 });
 
-test('an unverified global recipe is downgraded to a local claim', async () => {
-  // "Revoked" promises the user's other devices are signed out. Until someone has checked
-  // that on a second device, the promise is not made.
+test('an unverified global recipe is reported only as an attempt', async () => {
+  // "Revoked" promises copied tokens and other sessions were invalidated. Until that is
+  // checked independently, reaching the site's control is only an attempt.
   fakePage(() => true);
   const { runRecipe } = await load();
 
@@ -148,7 +148,7 @@ test('an unverified global recipe is downgraded to a local claim', async () => {
     10000
   );
 
-  assert.equal(result.result, 'loggedOut', 'not revoked');
+  assert.equal(result.result, 'attempted', 'not revoked');
   assert.match(result.detail, /unverified/);
 });
 

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Session Sentinel",
-  "version": "0.33.0",
-  "description": "Ends your web sessions on demand, on idle, on screen lock, or when the browser closes.",
+  "version": "0.34.0",
+  "description": "Attempts site sign-out and clears local session data on demand, on idle, on lock, or around browser close.",
   "minimum_chrome_version": "116",
   "permissions": [
     "storage",

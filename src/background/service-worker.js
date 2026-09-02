@@ -6,12 +6,11 @@
  * it entirely. So closing is handled twice:
  *
  *   1. Best effort on windows.onRemoved when the last window goes. Often completes.
- *   2. Authoritatively on runtime.onStartup, using a "clean shutdown" marker. This one
- *      always fires, and it runs before restored tabs can re-use their cookies.
+ *   2. Retry on runtime.onStartup, using a "clean shutdown" marker, then reload matching
+ *      restored tabs after local cleanup.
  *
- * The guarantee we can honestly make is therefore "your sessions are gone by the time
- * the browser is usable again", not "at the instant you closed it". The options page
- * says exactly that.
+ * Neither path proves remote token invalidation or guarantees work at the instant Chrome
+ * closes. The options page describes this as best-effort local cleanup plus a startup retry.
  */
 
 import { ensureInitialized, getSettings, getState, migrateSettings, setSiteOverride, updateSettings, updateState } from '../platform/settings.js';
@@ -89,10 +88,9 @@ chrome.runtime.onStartup.addListener(async () => {
  * Reload any restored tab belonging to a site we just cleared.
  *
  * Session restore races startup: a tab can finish loading with the old cookies before
- * the wipe lands, leaving a page that looks signed in over a session that is gone. That
- * is worse than being signed out, because the user trusts what they see. Reloading is
- * the least destructive way to make the tab tell the truth - it does not close the tab
- * or lose its place in history.
+ * the wipe lands, leaving a page that looks signed in after its local session material was
+ * removed. Reloading is the least destructive way to refresh that view - it does not close
+ * the tab or lose its place in history, and it makes no claim about remote token revocation.
  *
  * @param {import('../engine/report.js').RunReport} report
  */
@@ -150,7 +148,7 @@ chrome.idle.onStateChanged.addListener(async (newState) => {
 
   if (newState === 'locked' && settings.onLock.enabled) {
     // Screen lock is an explicit "I am walking away", so it is worth the background
-    // tabs needed to reach the server-side logout.
+    // tabs needed to attempt the site's own sign-out.
     await runLogout('lock');
   } else if (newState === 'idle' && settings.onIdle.enabled) {
     await runLogout('idle');
@@ -158,7 +156,8 @@ chrome.idle.onStateChanged.addListener(async (newState) => {
 });
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
-  // The keep-alive alarm needs no handler; firing at all is its whole purpose.
+  // The run alarm has no work of its own; it merely gives Chrome another reason to wake
+  // the worker during a long run. It is a resilience aid, not a lifetime guarantee.
   if (alarm.name === RECIPE_ALARM) await checkForRecipeUpdates();
 });
 
@@ -481,9 +480,9 @@ function applyPasswordPages(groups, support) {
 /**
  * Probe for password pages, a few at a time.
  *
- * Changing the password is the only revocation primitive that exists on most stacks — no
- * protocol lets an extension end a session it did not create — so finding that page is
- * the single most useful thing this can do for someone who has been compromised.
+ * A password page is one useful recovery destination when credentials may be exposed, but
+ * providers differ on whether a password change closes existing sessions. Session/device
+ * review remains a separate step and no revocation is inferred from finding this URL.
  *
  * Concurrency is capped because the recovery plan asks about every account at once, and
  * a burst of requests at a dozen sites is both slow and rude. Results are cached by the

@@ -86,9 +86,9 @@
     finishedAt: Date.now() - 2000,
     skipped: [{ domain: 'netflix.com', why: 'on your ignore list' }],
     sites: [
-      { domain: 'github.com', tier: 'critical', outcome: 'cleared', detail: 'local data cleared (deep)', tabsRefreshed: 1, verified: true, revokeGuidance: { kind: 'individual', url: 'https://github.com/settings/sessions', label: 'Web sessions', message: 'This site has no "sign out everywhere" button — sessions must be revoked one at a time from the list, or ended all at once by changing your password.' } },
-      { domain: 'google.com', tier: 'critical', outcome: 'loggedOut', detail: 'Ends the browser session properly instead of orphaning it.', tabsRefreshed: 2, verified: true, revokeGuidance: { kind: 'page', url: 'https://myaccount.google.com/device-activity', label: 'Your devices', message: 'Other devices may still be signed in. Revoke them from the page below if it offers it; changing your password is the reliable fallback.' } },
-      { domain: 'chase.com', tier: 'critical', outcome: 'cleared', detail: 'local data cleared (deep)', tabsRefreshed: 0, verified: true, revokeGuidance: { kind: 'passwordOnly', message: 'No way to sign out other devices is known for this site. Check its account security settings — and if there is nothing there, changing your password is usually the only thing that ends sessions elsewhere.' } },
+      { domain: 'github.com', tier: 'critical', outcome: 'cleared', detail: 'Local data cleared (deep); server-side invalidation was not verified.', tabsRefreshed: 1, verified: true, revokeGuidance: { kind: 'individual', url: 'https://github.com/settings/sessions', label: 'Web sessions', message: 'This site has no confirmed "sign out everywhere" button. Review the list and revoke unfamiliar sessions one at a time; do not assume a password change replaces this check.' } },
+      { domain: 'google.com', tier: 'critical', outcome: 'logoutAttempted', detail: 'Site sign-out was attempted; server-side invalidation was not independently verified.', tabsRefreshed: 2, verified: true, revokeGuidance: { kind: 'page', url: 'https://myaccount.google.com/device-activity', label: 'Your devices', message: 'Other devices or copied tokens may still be active. Review this page and remove anything unfamiliar.' } },
+      { domain: 'chase.com', tier: 'critical', outcome: 'cleared', detail: 'Local data cleared (deep); server-side invalidation was not verified.', tabsRefreshed: 0, verified: true, revokeGuidance: { kind: 'passwordOnly', message: 'No verified session-management page is known for this site. From a trusted device, review its security settings and verify active sessions separately.' } },
       { domain: 'slack.com', tier: 'high', outcome: 'failed', detail: 'could not clear local data', tabsRefreshed: 0, verified: false }
     ]
   };
@@ -236,7 +236,7 @@
             ];
             const labels = { identity: 'Email and identity', finance: 'Money', infrastructure: 'Infrastructure and code', communication: 'Communication and social' };
             const whys = {
-              identity: 'Secure these first. Every other account can be reset through them, so anything you fix before these can simply be taken again.',
+              identity: 'Review these first. Email and identity accounts can reset or unlock many other accounts, so leaving them compromised can undo later recovery work.',
               finance: 'Direct loss. Stored cards, transfers, and anything that can move money.',
               infrastructure: 'Lasting damage. Code, deployments, domains and cloud accounts can be altered in ways that outlive the breach.',
               communication: 'Impersonation, and a reset vector of their own for anything tied to these accounts.'
@@ -286,27 +286,30 @@
 
           case 'getCoverage': {
             const entries = [
-              { domain: 'github.com', outcome: 'loggedOut', method: 'recipe', attempted: true, at: Date.now()-8e6, runs: 3 },
-              { domain: 'google.com', outcome: 'loggedOut', method: 'recipe', attempted: true, at: Date.now()-7e6, runs: 2 },
-              { domain: 'vast.ai', outcome: 'loggedOut', method: 'home', attempted: true, at: Date.now()-6e6, runs: 1 },
-              { domain: 'proton.me', outcome: 'loggedOut', method: 'path', attempted: true, at: Date.now()-5e6, runs: 1 },
-              { domain: 'linear.app', outcome: 'loggedOut', method: 'path', attempted: true, at: Date.now()-4e6, runs: 1 },
+              { domain: 'github.com', outcome: 'logoutAttempted', method: 'recipe', attempted: true, at: Date.now()-8e6, runs: 3 },
+              { domain: 'google.com', outcome: 'logoutAttempted', method: 'recipe', attempted: true, at: Date.now()-7e6, runs: 2 },
+              { domain: 'vast.ai', outcome: 'logoutAttempted', method: 'home', attempted: true, at: Date.now()-6e6, runs: 1 },
+              { domain: 'proton.me', outcome: 'logoutAttempted', method: 'path', attempted: true, at: Date.now()-5e6, runs: 1 },
+              { domain: 'linear.app', outcome: 'logoutAttempted', method: 'path', attempted: true, at: Date.now()-4e6, runs: 1 },
               { domain: 'chase.com', outcome: 'cleared', method: 'none', attempted: true, at: Date.now()-3e6, runs: 2 },
               { domain: 'breadpayments.com', outcome: 'cleared', method: 'none', attempted: true, at: Date.now()-2e6, runs: 1 },
               { domain: 'somerandomblog.net', outcome: 'cleared', method: 'none', attempted: false, at: Date.now()-1e6, runs: 1 }
             ];
             const byMethod = {};
-            let attempted=0, ended=0, cleared=0;
+            let attempted=0, reached=0, verifiedRevoked=0, cleared=0;
             const needs=[];
             for (const e of entries) {
               if (!e.attempted) continue;
               attempted++;
               byMethod[e.method] = (byMethod[e.method]??0)+1;
-              if (e.outcome==='loggedOut'||e.outcome==='revoked') ended++; else { cleared++; needs.push(e); }
+              if (e.outcome==='logoutAttempted'||e.outcome==='revoked') {
+                reached++;
+                if (e.outcome==='revoked') verifiedRevoked++;
+              } else { cleared++; needs.push(e); }
             }
             return delay({ entries, summary: {
-              total: entries.length, attempted, endedSession: ended, clearedOnly: cleared, failed: 0,
-              hitRate: Math.round((ended/attempted)*100), byMethod,
+              total: entries.length, attempted, logoutReached: reached, verifiedRevoked, clearedOnly: cleared, failed: 0,
+              reachRate: Math.round((reached/attempted)*100), byMethod,
               needsRecipe: needs.sort((a,b)=>b.at-a.at)
             }}, 30);
           }
@@ -367,8 +370,10 @@
               sites: [{
                 domain: message.domain,
                 tier: 'critical',
-                outcome: message.type === 'clearSite' ? 'cleared' : 'revoked',
-                detail: 'fixture',
+                outcome: message.type === 'clearSite' ? 'cleared' : 'logoutAttempted',
+                detail: message.type === 'clearSite'
+                  ? 'Local data cleared in preview fixture.'
+                  : 'Site sign-out attempted in preview fixture; revocation not verified.',
                 tabsRefreshed: 1,
                 verified: true
               }]

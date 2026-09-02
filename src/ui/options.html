@@ -13,11 +13,11 @@
     </p>
 
     <div class="note">
-      <strong>What "log out" can and cannot do.</strong> Deleting cookies protects you on
-      this machine. It does not invalidate a token that was already stolen. Where a site
-      offers a real "sign out of all devices" control, Session Sentinel drives it in a
-      hidden tab and reports <em>revoked</em>; otherwise it reports
-      <em>cleared locally</em> and means it.
+      <strong>What sign-out can and cannot prove.</strong> Session Sentinel can activate a
+      site's logout and clear data on this computer, but a click does not prove the server
+      rejected a copied token. It reports <em>sign-out attempted</em> unless a separately
+      tested revoke-everywhere recipe completed. Local clearing never invalidates a token
+      that was already stolen.
     </div>
 
     <section class="card">
@@ -27,14 +27,14 @@
         <div class="row-text">
           <h3>When the browser closes</h3>
           <p>
-            Chrome gives extensions no reliable shutdown hook, so this runs on close if it
-            can and otherwise completes on next launch, before your restored tabs load.
-            Sessions are gone by the time the browser is usable again.
+            Chrome gives extensions no reliable shutdown hook. Cleanup is attempted at
+            close; if the prior run did not finish, it is retried after the next launch and
+            matching restored tabs are reloaded. This is not an exact shutdown guarantee.
           </p>
         </div>
         <div class="row-control">
           <select id="close-tier"></select>
-          <input type="checkbox" id="close-enabled" aria-label="Log out when the browser closes" />
+          <input type="checkbox" id="close-enabled" aria-label="Run cleanup when the browser closes" />
         </div>
       </div>
 
@@ -47,7 +47,7 @@
           <input type="number" id="idle-minutes" min="1" max="480" />
           <span class="muted">min</span>
           <select id="idle-tier"></select>
-          <input type="checkbox" id="idle-enabled" aria-label="Log out after inactivity" />
+          <input type="checkbox" id="idle-enabled" aria-label="Run cleanup after inactivity" />
         </div>
       </div>
 
@@ -58,7 +58,7 @@
         </div>
         <div class="row-control">
           <select id="lock-tier"></select>
-          <input type="checkbox" id="lock-enabled" aria-label="Log out when the screen locks" />
+          <input type="checkbox" id="lock-enabled" aria-label="Run cleanup when the screen locks" />
         </div>
       </div>
     </section>
@@ -68,15 +68,16 @@
 
       <div class="row">
         <div class="row-text">
-          <h3>Contact sites to invalidate sessions</h3>
+          <h3>Attempt site sign-out</h3>
           <p>
-            Opens a hidden background window to use the site's own sign-out, which is the
-            only way to kill a session server-side. Costs a few seconds per site.
+            Uses a temporary background tab in an existing window to activate the site's
+            own sign-out before local cleanup. Only the site can invalidate its token, and
+            the extension does not treat a click as proof. Adds a few seconds per site.
           </p>
         </div>
         <div class="row-control">
           <select id="server-tier"></select>
-          <input type="checkbox" id="server-enabled" aria-label="Contact sites to invalidate sessions" />
+          <input type="checkbox" id="server-enabled" aria-label="Attempt site sign-out before local cleanup" />
         </div>
       </div>
 
@@ -115,13 +116,12 @@
 
       <div class="row">
         <div class="row-text">
-          <h3>Warn before logging out of an account you cannot fully secure</h3>
+          <h3>Warn before sign-out when an account may be compromised</h3>
           <p>
-            Most sites cannot end sessions on your other devices, so logging out only
-            affects this browser. If someone else is using your account, changing your
-            password is the better move — it ends every other session at once and keeps you
-            signed in here. This offers that choice before logging out, while you still
-            have a session to change the password from.
+            The warning starts with a clean-device recovery checklist. It tells you to
+            review active sessions or devices, remove unfamiliar access, change an exposed
+            password, and review MFA and recovery methods. It never assumes a password
+            change or a clicked logout invalidated every token.
           </p>
         </div>
         <div class="row-control">
@@ -138,8 +138,8 @@
           <h3>Your open tabs</h3>
           <p>
             A page you already have open keeps its session in memory, so it carries on
-            looking signed in until it is reloaded — even though the logout worked.
-            Reloading it makes the result visible immediately. Turn this off if you would
+            looking signed in until it is reloaded. Reloading it makes the local cleanup
+            visible immediately. Turn this off if you would
             rather refresh pages yourself; note that reloading discards anything you had
             typed into a form on that site.
           </p>
@@ -155,7 +155,7 @@
       <div class="row">
         <div class="row-text">
           <h3>Show a notification after each run</h3>
-          <p>Reports what was revoked, what was only cleared, and what failed.</p>
+          <p>Reports verified revoke-recipe completion, sign-out attempts, local clearing, and failures separately.</p>
         </div>
         <div class="row-control">
           <input type="checkbox" id="notifications" aria-label="Show notifications" />
@@ -164,14 +164,14 @@
     </section>
 
     <section class="card">
-      <h2 style="margin-bottom:8px">Logout recipes</h2>
+      <h2 style="margin-bottom:8px">Sign-out recipes</h2>
 
       <div class="row">
         <div class="row-text">
           <h3>Keep site recipes up to date</h3>
           <p>
-            Sites move their "sign out everywhere" buttons, and a stale recipe quietly
-            downgrades a site from <em>revoked</em> to <em>cleared locally</em>. Updates are
+            Sites move their "sign out everywhere" buttons, and a stale recipe must never
+            keep a revocation claim alive. Updates are
             signed, and the whole list is downloaded at once — never queried per site — so
             the server cannot learn which sites you use. If an update fails or cannot be
             verified, the recipes built into the extension stay in force.
@@ -188,8 +188,8 @@
     <section class="card">
       <h2 style="margin-bottom:8px">Sites</h2>
       <p class="muted" style="margin-bottom:10px">
-        Set a site to <strong>never clear</strong> to stay signed in there — it is skipped by
-        every automatic trigger and by "Log out of confirmed accounts". You can still clear it by
+        Set a site to <strong>never clear</strong> to keep its local data — it is skipped by
+        every automatic trigger and by "Attempt sign-out of confirmed accounts". You can still clear it by
         hand from the popup. <strong>Always protect</strong> does the opposite: the site is
         treated as critical no matter how it was classified.
       </p>

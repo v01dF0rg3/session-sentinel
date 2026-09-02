@@ -4,13 +4,13 @@ Design rationale for Session Sentinel, and the constraints that produced it.
 
 ## The problem
 
-A logout can produce three materially different results:
+A cleanup run can produce materially different evidence:
 
 | | What it does | Feasibility |
 |---|---|---|
-| **A. Local session destruction** | Delete cookies + storage for an origin on this machine | 100% reliable, needs no site cooperation |
-| **B. Site logout** | Drive the site's own logout so the server invalidates this token | Reliable *if* driven through a real tab |
-| **C. Global revocation** | Kill the session on the user's phone and other laptops | Per-site only, frequently behind re-auth |
+| **A. Local clearance** | Delete cookies + storage for an origin on this machine | Browser-verifiable per data type; remote tokens untouched |
+| **B. Site sign-out attempt** | Drive the site's own logout route or control | The action is observable; server token state is not |
+| **C. Verified global recipe** | Run a recipe separately tested for revoke-everywhere behavior | Provider-specific, rare, and still not remote introspection |
 
 Most extensions in this space deliver A and let the user believe it is C. That is a
 security lie: the user stops worrying about a session that is still live. Every result in
@@ -31,7 +31,8 @@ So the unit of automation is not an HTTP request. It is a short **recipe of
 navigate/click/wait steps executed in a real background tab on the site's own origin**,
 where all of that context exists for free. This single decision shapes everything else:
 it is why `src/platform/tabs.js` exists, why the interpreter loop lives in the service
-worker rather than the page, and why the extension can honestly claim `revoked` at all.
+worker rather than the page, and why the extension can honestly report that sign-out was
+attempted. `revoked` is reserved for a separately tested global recipe that completes.
 
 ## Execution model
 
@@ -69,31 +70,30 @@ a browser rather than in node.
 
 Per site, in this order (`src/engine/run.js`):
 
-1. **Server-side logout** — needs the cookies, so it must run first
-2. **Park the user's tabs on that domain** — a live SPA holds tokens in memory and will
-   write them straight back into `localStorage` after a wipe
+1. **Server-side sign-out attempt** — needs the cookies, so it must run first
+2. **Find the user's tabs on that domain** without navigating or closing them
 3. **Destroy local data**
-4. **Send the parked tabs back**, now signed out
+4. **Optionally reload matching tabs** so they reflect the local cleanup
 5. **Verify** by re-reading the cookie jar
 
 Wiping first is the classic bug: it deletes the credentials the logout request needed.
 
-Step 2 **parks** tabs on `about:blank` rather than closing them, and that distinction is
-load-bearing. An earlier version closed them, which meant "log out of all sessions" closed
-every tab on every signed-in site, closed the windows containing them, and quit the
-browser. Parking kills the page context just as well and nothing is destroyed.
+Earlier versions closed or force-navigated user tabs during cleanup. Closing every targeted
+tab could close the windows containing them and quit Chrome; force-navigation could disrupt
+active pages. The current path only queries user tabs and, when configured, asks Chrome to
+reload them after cleanup.
 
 The invariant that came out of it: **the extension must never be able to close the user's
 browser.** Enforced structurally rather than by guards:
 
-- Tabs are parked on `about:blank`, never closed, and sent back afterwards.
+- User tabs are never closed or force-navigated; the only optional action is reload.
 - **The extension does not create or remove windows at all.** Work happens in a background
-  tab inside a window the user already has open; when there is none, server-side logout is
+  tab inside a window the user already has open; when there is none, website sign-out is
   skipped and reported as skipped. This replaced a hidden work window whose removal kept
   ending the browser session — window count is not something an extension can reason about
   reliably, and Chrome exits the moment it reaches zero.
-- Exactly one `tabs.remove` call exists, inside `closeTab`, which refuses to close the last
-  tab of the last window. Every caller goes through it.
+- Exactly one `tabs.remove` call exists, inside `closeTab`, for temporary work tabs. It
+  refuses to close the last tab of the last window, and every caller goes through it.
 
 Pinned by `tests/tabs.test.mjs`, which replaces `windows.create` and `windows.remove` with
 fakes that throw and runs the whole tab path against them.
@@ -105,13 +105,14 @@ crash, a kill, or an OS shutdown skips it entirely. Handled twice:
 
 1. **Best effort** on `chrome.windows.onRemoved` when the last window closes. Often
    completes. Never relied on.
-2. **Authoritative** on `chrome.runtime.onStartup`, using a `shutdownClean` marker in
-   storage. This always fires, and runs before restored tabs can reuse their cookies.
+2. **Startup retry** on `chrome.runtime.onStartup`, using a `shutdownClean` marker in
+   storage. After cleanup, matching restored tabs are reloaded.
 
-The honest guarantee is therefore *"your sessions are gone by the time the browser is
-usable again"*, not *"at the instant you closed it"*. The options page says exactly that.
+Neither path guarantees work at the instant Chrome closes, and the local-only path cannot
+prove that a server rejected a copied token. The options page describes the close hook as
+best effort and the next-startup cleanup as a retry, not as verified revocation.
 
-Server-side logout is impossible at close time — it needs live tabs and network — so close
+Website sign-out is unavailable at close time — it needs live tabs and network — so close
 and startup both run the local-only path (`runLocalWipe`).
 
 ## The onboarding gate
@@ -134,13 +135,12 @@ Three places where an earlier version could report success it had not earned:
   first version caught the rejection, deleted cookies as a fallback, and returned ok — so a
   deep wipe could silently degrade to cookies only. It now retries type by type and names
   what survived.
-- **No work window.** If `windows.create()` fails, every server-side logout in the run is
-  impossible. That is now stated once, rather than left to be inferred from a column of
-  amber results.
+- **No usable existing window.** A website sign-out attempt needs a real tab. If no existing
+  normal window can host the temporary tab, the attempt is skipped and local cleanup is
+  reported separately. The extension never creates or removes a browser window.
 - **Restored tabs.** Session restore races the startup wipe, so a tab can finish loading
-  with the old cookies and *look* signed in over a session that is gone. Tabs on cleared
-  domains are reloaded, because a page that lies about your auth state is worse than one
-  that shows you logged out.
+  with old state and *look* signed in after local data is cleared. Tabs on cleared domains
+  are reloaded to refresh the view; this does not prove remote token invalidation.
 
 ## The recipe update channel
 
@@ -178,10 +178,9 @@ the whole path is tested against real keys and real forgeries in
 
 ## Claims must be earned
 
-`revoked` tells the user their session is dead on their phone. That is a strong claim, and
-the extension made it falsely: a GitHub recipe reported a revocation while every session on
-the account stayed live. Three things had to be true at once for that to happen, and all
-three are now closed:
+An earlier `revoked` result told the user that sessions elsewhere were dead. The extension
+made that claim falsely: a GitHub recipe reported revocation while every other session on
+the account stayed live. Three holes allowed that result, and all three are now closed:
 
 - **An absence assertion needs a prior presence.** `assertAbsent` on a selector that was
   never on the page is trivially true. The runner tracks which selectors it has actually
@@ -190,11 +189,11 @@ three are now closed:
   finish having clicked nothing. `global` recipes must now carry a click that can fail the
   recipe, and the runner reports `none` when no click landed.
 - **A capability claim needs evidence.** Recipes carry a `verified` date, set only after
-  someone signed in on a second device, ran the logout, and watched that device get signed
-  out. Unverified `global` recipes are downgraded to a local claim at run time.
+  someone signed in on a second device, ran the recipe, and checked the second session.
+  Unverified `global` recipes are reported only as attempts at run time.
 
-No bundled recipe is verified. The extension therefore cannot currently report `revoked` at
-all — which is the correct state for fifteen recipes nobody has checked.
+No bundled recipe has verified global capability. The extension therefore cannot currently
+report `revoked`; the four bundled recipes can at most produce **Sign-out attempted**.
 
 ## Federated sign-in
 
@@ -265,11 +264,13 @@ login alerts. Same user need, honest mechanism. Planned, not built.
 
 ## Roadmap
 
-Current state: tiers 0, 1, 3 and 4 working end to end, 15 curated recipes, signed
-update channel built and tested but not yet pointed at a live host.
+Current state: tiers 0, 1, 3 and 4 are implemented, four curated recipes are bundled, and
+the signed update channel is tested but not pointed at a live host. Real-world sign-out
+reach is measured in Diagnostics rather than assumed from automated tests.
 
-1. **More recipes.** The highest-value work per hour. Each one upgrades a site from
-   *cleared locally* to *revoked*.
+1. **More measured recipes.** Each one may upgrade a site from *cleared locally* to a
+   repeatable *sign-out attempted* path. Global revocation is claimed only after separate
+   second-device verification.
 2. **Publish the bundle host.** The update channel is built and tested; no host is live,
    which is why the feature ships switched off.
 3. **Tier 2: record-once.** For sites with no recipe, let the user perform a logout while

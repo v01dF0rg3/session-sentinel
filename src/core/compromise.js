@@ -6,8 +6,8 @@
  * is exposed, and in what order do I fix it?"
  *
  * Order is the substance. Securing a bank before the mailbox that receives its
- * password-reset link is wasted work: the attacker resets it again. So identity comes
- * first, always, regardless of how the risk tiers rank things.
+ * password-reset link may be undone if the mailbox remains compromised. So identity comes
+ * first, regardless of how the risk tiers rank things.
  *
  * Pure - no chrome.* - so the ordering can be tested without a browser.
  */
@@ -30,7 +30,7 @@ import { siblingsOf } from './identity.js';
  * @property {string} siteUrl Always present, as a starting point.
  * @property {string} [sessionsUrl]
  * @property {string} [sessionsLabel]
- * @property {string[]} sharesSignInWith Accounts secured by the same password.
+ * @property {string[]} sharesSignInWith Related products using the same identity provider.
  * @property {boolean} frequent The user visits this site often.
  * @property {boolean} unverified Included as a candidate; not a confirmed account.
  */
@@ -100,8 +100,8 @@ export function buildRecoveryPlan(domains, settings, minTier = 'high', frequent 
       siteUrl: advice?.siteUrl ?? `https://${domain}`,
       sessionsUrl: advice?.sessionsUrl,
       sessionsLabel: advice?.sessionsLabel,
-      // A shared sign-in means one password change covers several accounts - worth
-      // saying, so the user does not hunt for a password page that does not exist.
+      // A shared identity means one provider may control several products. The UI still
+      // tells the user to verify each product's sessions separately.
       sharesSignInWith: siblingsOf(domain).filter((d) => included.has(d)),
       frequent: frequent.has(domain),
       // Cookies that look session-bearing, with nothing to prove the session is an

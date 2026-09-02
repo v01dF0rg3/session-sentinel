@@ -2,7 +2,7 @@
  * The orchestrator. One place that decides what happens, in what order, to each site.
  *
  * Ordering is load-bearing and easy to get wrong:
- *   1. server-side logout - needs the cookies, so it must run FIRST
+ *   1. website sign-out attempt - needs the cookies, so it must run FIRST
  *   2. destroy local data
  *   3. optionally reload the user's tabs on that site
  *   4. verify
@@ -47,9 +47,8 @@ const KEEPALIVE_ALARM = 'sentinel-keepalive';
 /**
  * Is a run currently underway?
  *
- * Also consulted by the browser-close handler: closing the run's own hidden work window
- * fires windows.onRemoved, and without this guard that can be mistaken for the browser
- * shutting down and kick off a second, competing wipe.
+ * Also consulted by the browser-close handler so a close event arriving during a run does
+ * not start a second, competing cleanup.
  *
  * @returns {Promise<boolean>}
  */
@@ -78,8 +77,8 @@ export async function runLogout(trigger, domains = null) {
   }
   await chrome.storage.session.set({ [RUN_LOCK]: Date.now() });
 
-  // The MV3 service worker is killed after ~30s idle. Ongoing chrome.* calls reset that
-  // timer, but a slow page load can leave a gap; the alarm covers it.
+  // A slow page load can leave a gap in chrome.* activity. The periodic alarm gives Chrome
+  // another opportunity to wake the worker; it is not treated as a completion guarantee.
   await chrome.alarms.create(KEEPALIVE_ALARM, { periodInMinutes: 0.4 });
 
   try {
@@ -87,7 +86,7 @@ export async function runLogout(trigger, domains = null) {
     const known = likelyLoggedIn(await discoverSessions()).map((s) => s.domain);
     const requested = domains ?? known;
 
-    // A site whose sign-in lives on another domain cannot be logged out alone - the
+    // A site whose sign-in lives on another domain cannot be processed in isolation - the
     // surviving session re-issues its cookies on the next visit. Clearing youtube.com
     // without google.com is the case that made this obvious.
     // The button-driven bulk run passes the confirmed set explicitly. Restrict identity
@@ -105,7 +104,7 @@ export async function runLogout(trigger, domains = null) {
     const sites = [];
     const needsWindow = plan.targets.some((t) => t.serverLogout);
 
-    // Server-side logout borrows a window the user already has open. The extension never
+    // Website sign-out borrows a window the user already has open. The extension never
     // creates or closes a window: Chrome quits when its window count reaches zero, and no
     // amount of guarding around that is worth the risk of ending someone's session.
     /** @type {number | null} */
@@ -114,7 +113,7 @@ export async function runLogout(trigger, domains = null) {
     if (needsWindow) {
       windowId = await findUsableWindow();
       if (windowId === null) {
-        windowError = 'no browser window is open to run the site logout in';
+        windowError = 'no browser window is open to host the temporary work tab';
       }
     }
 
@@ -137,36 +136,33 @@ export async function runLogout(trigger, domains = null) {
         await mark('serverLogout', 'opening the site own sign-out page in a background tab', target.domain);
         attempt = await attemptServerLogout(target.domain, windowId, settings.serverLogout.timeoutMs);
       } else if (target.serverLogout && windowError) {
-        attempt = { result: 'none', detail: `could not open a background window (${windowError})` };
+        attempt = { result: 'none', detail: `could not open a temporary work tab (${windowError})` };
       }
 
       // 2. Note the user's tabs on this site. Finding them is read-only and always safe;
-      //    only reloading is opt-in, because the extension touching tabs is what kept
+      //    only the configured reload touches them, because earlier tab handling kept
       //    killing the browser. Counting them either way lets the report explain why a
       //    page still looks signed in.
       const affected = await findTabsForDomain(target.domain);
-      result.tabsRefreshed = affected.length;
-
       // 3. Destroy what is left locally. This always runs, whatever happened above.
       await mark('wipe', `clearing ${target.dataTypes.join(', ')} for this site`, target.domain);
       const wipe = await wipeSite(target.domain, target.dataTypes);
 
-      // 4. Optionally reload those tabs so they show the signed-out state.
+      // 4. Optionally reload those tabs so they reflect the local cleanup.
       if (affected.length && settings.tabHandling === 'reload') {
         await mark('reloadTabs', 'reloading your open tabs on this site', target.domain);
-        await reloadTabs(affected);
+        result.tabsRefreshed = await reloadTabs(affected);
       }
 
       // 5. Verify, then report the weakest claim the evidence supports.
       await mark('verify', 'reading the cookie jar back to confirm the wipe', target.domain);
       result.verified = await verifyCleared(target.domain);
 
-      // Clearing cookies locally does not end the session on the site's side - it orphans
-      // it. GitHub will happily list five abandoned-but-active sessions from five clears.
-      // Say what would actually finish the job, which differs by site: revoke from a list,
-      // or change the password because the site offers nothing else.
+      // Clearing cookies locally does not ask the site to invalidate a server token.
+      // Say where the user can review sessions and security settings rather than implying
+      // that local verification proves anything about the server.
       if (attempt.result !== 'revoked') {
-        result.revokeGuidance = revokeGuidanceFor(target.domain, attempt.result === 'loggedOut');
+        result.revokeGuidance = revokeGuidanceFor(target.domain, attempt.result === 'attempted');
       }
 
       // A partial wipe is not a clean one. Say which types survived rather than
@@ -182,13 +178,11 @@ export async function runLogout(trigger, domains = null) {
       const shared = added.find((a) => a.domain === target.domain);
       const sharedNote = shared ? ` (shares a sign-in with ${shared.because})` : '';
 
-      // An already-open page keeps its session in memory and will look signed in until it
-      // is reloaded. Users read that as "the logout did not work", so it has to be said.
-      // An abandoned session is a live token the user can no longer see. Saying which
-      // happened is the difference between "done" and "done, mostly".
+      // An already-open page may keep old state in memory and look signed in until reload.
+      // If no site sign-out was reached, make the lack of server-side verification explicit.
       const orphanNote =
         attempt.result === 'none' && target.serverLogout
-          ? ' — cleared here, but the session was not ended on the site, so it stays listed as active there'
+          ? ' — cleared here, but no server-side invalidation was verified; the site may still list the session as active'
           : '';
       const openTabsNote =
         affected.length && settings.tabHandling !== 'reload'
@@ -201,8 +195,8 @@ export async function runLogout(trigger, domains = null) {
       } else if (attempt.result === 'revoked') {
         result.outcome = 'revoked';
         result.detail = attempt.detail + sharedNote + partial + keptNote + openTabsNote;
-      } else if (attempt.result === 'loggedOut') {
-        result.outcome = 'loggedOut';
+      } else if (attempt.result === 'attempted') {
+        result.outcome = 'logoutAttempted';
         result.detail = attempt.detail + sharedNote + partial + keptNote + openTabsNote;
       } else {
         result.outcome = 'cleared';
@@ -211,9 +205,9 @@ export async function runLogout(trigger, domains = null) {
           sharedNote + orphanNote + partial + keptNote + openTabsNote;
       }
 
-      // Count what actually worked. Four recipes cover 218 sites; whether the generic
-      // fallback carries the rest has never been measured, and without a number the
-      // choice of which site to write a recipe for is guesswork.
+      // Count what was reached. Four recipes cover four domains; whether the generic
+      // fallback reaches the rest has never been measured, and without a number the choice
+      // of which site to write a recipe for is guesswork.
       await recordOutcome(target.domain, result.outcome, attempt.method ?? 'none', target.serverLogout);
 
       sites.push(result);

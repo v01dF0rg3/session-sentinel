@@ -1,13 +1,14 @@
 /**
- * Server-side logout: the tiers that try to invalidate the token rather than merely
- * delete it. Runs in a hidden background tab on the site's own origin.
+ * Website sign-out attempts: the tiers that contact a site before local cleanup. Runs in
+ * a temporary background tab inside an existing window, on the site's own origin.
  *
- *   Tier 3  curated recipe        - "sign out of all devices" where the site offers it
+ *   Tier 3  curated recipe        - site-specific sign-out flow
  *   Tier 4  OIDC RP-initiated     - generic, covers a lot of Okta/Entra/Auth0 SaaS
  *   Tier 1  heuristic             - find and click whatever reads as a logout control
  *
- * Every path reports honestly. A step that cannot prove it worked returns 'loggedOut'
- * or nothing at all - never 'revoked'.
+ * Every path reports honestly. Reaching an endpoint or clicking a control proves only that
+ * sign-out was attempted; it does not prove that the server rejected a copied token.
+ * Only a separately verified revoke-everywhere recipe may return 'revoked'.
  */
 
 import { heuristicRecipe, isValidRecipe } from '../core/recipes.js';
@@ -22,7 +23,7 @@ import { closeTab, navigateTab, openTab, sleep } from '../platform/tabs.js';
 
 /**
  * @typedef {object} LogoutAttempt
- * @property {'revoked' | 'loggedOut' | 'none'} result
+ * @property {'revoked' | 'attempted' | 'none'} result
  * @property {string} detail
  * @property {LogoutMethod} [method] Which tier actually did the work. Recorded rather than
  *   inferred from `detail`, so coverage can be counted instead of guessed at.
@@ -43,7 +44,6 @@ export async function runRecipe(recipe, windowId, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   /** @type {number | null} */
   let tabId = null;
-  let executed = 0;
   let lastDetail = '';
 
   // Selectors this run has actually seen on the page.
@@ -58,19 +58,27 @@ export async function runRecipe(recipe, windowId, timeoutMs) {
   // Did the recipe actually do anything? A recipe whose only actions were optional and
   // all missed has changed nothing, whatever its final assert says.
   let clicked = false;
+  let usedLogoutRoute = false;
+  const attemptedResult = () => (clicked || usedLogoutRoute ? 'attempted' : 'none');
 
   try {
     for (const step of recipe.steps) {
       if (Date.now() > deadline) {
-        return { result: executed > 0 ? 'loggedOut' : 'none', detail: 'timed out mid-recipe' };
+        return { result: attemptedResult(), detail: 'timed out before the sign-out flow completed' };
       }
 
       if (step.op === 'navigate') {
         const url = step.url ?? '';
+        try {
+          usedLogoutRoute ||= /(^|\/)(logout|signout|sign-out|sign_out|log-out|log_out)(\/|$)/i.test(
+            new URL(url).pathname
+          );
+        } catch {
+          // Validation handles malformed destinations. This flag only affects wording.
+        }
         const remaining = Math.max(2000, deadline - Date.now());
         if (tabId === null) tabId = await openTab(windowId, url, remaining);
         else await navigateTab(tabId, url, remaining);
-        executed += 1;
         lastDetail = 'navigated';
         continue;
       }
@@ -81,7 +89,7 @@ export async function runRecipe(recipe, windowId, timeoutMs) {
       // the point: it turns a meaningless pass into an honest "could not confirm".
       if (step.op === 'assertAbsent' && !confirmedPresent.has(step.selector ?? '')) {
         return {
-          result: executed > 1 ? 'loggedOut' : 'none',
+          result: attemptedResult(),
           detail: `cannot confirm "${step.selector}" went away - it was never seen on the page`
         };
       }
@@ -105,13 +113,11 @@ export async function runRecipe(recipe, windowId, timeoutMs) {
       if (!stepResult.ok && !step.optional) {
         // A failed assert means the site did not end up in the state the recipe
         // promised, so the recipe cannot claim its capability.
-        const partial = executed > 1;
         return {
-          result: partial ? 'loggedOut' : 'none',
+          result: attemptedResult(),
           detail: `step "${step.op}" failed: ${stepResult.detail}`
         };
       }
-      executed += 1;
     }
 
     // A recipe whose actions all missed did nothing, however cleanly its steps ran.
@@ -124,19 +130,18 @@ export async function runRecipe(recipe, windowId, timeoutMs) {
       };
     }
 
-    // `revoked` is a promise that sessions on the user's other devices are gone. It is
-    // only made for recipes whose behaviour has been confirmed against a real account -
-    // a GitHub recipe once claimed it while every other session stayed live, and an
-    // unverifiable claim of that kind is worse than no claim at all.
+    // The strong result is reserved for a global recipe whose behavior was checked on a
+    // second device. It says that verified recipe completed, not that this extension read
+    // the provider's token database. An unverified global recipe remains only an attempt.
     if (recipe.capability === 'global' && !recipe.verified) {
       return {
-        result: 'loggedOut',
-        detail: `${recipe.note ?? lastDetail} (this site's revoke-everywhere step is unverified, so only this browser's session is claimed)`
+        result: 'attempted',
+        detail: `${recipe.note ?? lastDetail} (revoke-everywhere is unverified; no server-side invalidation is claimed)`
       };
     }
 
     return {
-      result: recipe.capability === 'global' ? 'revoked' : 'loggedOut',
+      result: recipe.capability === 'global' ? 'revoked' : 'attempted',
       detail: recipe.note ?? lastDetail
     };
   } catch (error) {
@@ -268,7 +273,10 @@ export async function runOidcLogout(endpoint, domain, windowId, timeoutMs) {
       ]
     });
     await sleep(1200);
-    return { result: 'loggedOut', detail: 'OpenID Connect sign-out endpoint' };
+    return {
+      result: 'attempted',
+      detail: 'OpenID Connect sign-out was attempted; server-side invalidation was not independently verified'
+    };
   } catch (error) {
     return { result: 'none', detail: error instanceof Error ? error.message : String(error) };
   } finally {
@@ -277,7 +285,7 @@ export async function runOidcLogout(endpoint, domain, windowId, timeoutMs) {
 }
 
 /**
- * Try every server-side avenue for one site, best first, stopping at the first success.
+ * Try every site sign-out avenue, best first, stopping at the first observed attempt.
  *
  * @param {string} domain
  * @param {number} windowId
@@ -303,9 +311,8 @@ export async function attemptServerLogout(domain, windowId, timeoutMs) {
     }
   }
 
-  // Tier 1. Two shapes, cheapest and most likely first. Worth trying hard: without it the
-  // session is merely abandoned, and an abandoned session is a live token the user can no
-  // longer see.
+  // Tier 1. Two shapes, cheapest and most likely first. Without a site request, local
+  // clearance gives the server no opportunity to invalidate its token.
   if (!recipe) {
     // Probe first: only open a tab on a logout URL that is known to exist. Guessing and
     // letting the user watch a 404 is both useless and alarming.
@@ -325,6 +332,6 @@ export async function attemptServerLogout(domain, windowId, timeoutMs) {
   return {
     result: 'none',
     method: 'none',
-    detail: 'could not find a sign-out on this site, so its session was cleared here but not ended'
+    detail: 'could not find a site sign-out; local data was cleared and server-side invalidation was not verified'
   };
 }

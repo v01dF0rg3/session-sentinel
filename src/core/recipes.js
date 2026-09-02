@@ -10,13 +10,13 @@
  * Origin/Referer, and SameSite=Strict cookies - none of which a replayed fetch from
  * the extension origin can produce.
  *
- * `capability` is a promise to the user and must be honest:
- *   'global' - kills sessions on the user's other devices too
- *   'local'  - invalidates this browser's session server-side, nothing else
+ * `capability` controls the strongest result a separately tested recipe may support:
+ *   'global' - has been tested for revoke-everywhere behavior
+ *   'local'  - reaches sign-out for this browser; each run is still reported as an attempt
  *
- * VERIFICATION STATUS: every URL below has been checked to resolve. NO recipe has been
- * confirmed against a real signed-in account, so none carries a `verified` date and none
- * can report 'revoked' - the engine downgrades an unverified 'global' claim to 'local'.
+ * VERIFICATION STATUS: every URL below has been checked to resolve. GitHub and Google have
+ * local observations recorded, but NO recipe has verified global capability. None can
+ * currently report 'revoked'.
  *
  * This is not caution for its own sake. The GitHub recipe below claimed it had revoked
  * every session; the account's other devices were still signed in minutes later. Three
@@ -58,7 +58,7 @@ import { registrableDomain } from './domain.js';
  * @property {boolean} [mayRequireReauth] Site often demands a password to finish.
  * @property {string} [verified] ISO date the capability was CONFIRMED against a real
  *   account, by signing in on a second device and checking the session actually died.
- *   Without it a 'global' recipe is downgraded to 'local' at run time.
+ *   Without it a 'global' recipe is reported only as an attempt at run time.
  * @property {string} [note]
  */
 
@@ -79,7 +79,7 @@ export const RECIPES = [
     // github.com/settings/sessions dropped by one after a run, where every previous
     // cookie-only clear had increased it.
     verified: '2026-08-31',
-    note: 'Uses GitHub own sign-out form, so the session ends server-side instead of being abandoned.'
+    note: 'Used GitHub\'s own sign-out form; server-side invalidation is not independently verified for this run.'
   },
   {
     domain: 'google.com',
@@ -92,7 +92,7 @@ export const RECIPES = [
     // myaccount.google.com/device-activity after a run. Reached by logging out of
     // youtube.com, which expands to google.com because they share a sign-in.
     verified: '2026-08-31',
-    note: 'Ends the browser session properly instead of orphaning it. Google requires per-device confirmation for a true global sign-out.'
+    note: 'Used Google\'s logout route; server-side invalidation is not independently verified for this run.'
   },
   {
     domain: 'amazon.com',
@@ -125,10 +125,10 @@ export function findRecipe(domain) {
 /**
  * Tier 1 fallback: find and use the site's own logout, without a recipe.
  *
- * This matters more than it looks. Deleting cookies does not end a session - it abandons
- * it, leaving a live token on the server that the user can no longer see or revoke. Five
- * clears of one GitHub account produced five abandoned-but-active sessions. Reaching the
- * site's real sign-out is the difference between ending a session and littering.
+ * This matters more than it looks. Deleting cookies does not ask the site to invalidate a
+ * server token. Five clears of one GitHub account produced five active session entries.
+ * Reaching the site's real sign-out gives it an opportunity to invalidate the token, but
+ * the extension still reports only what it observed: a route or control was reached.
  *
  * Two modes, tried in order by attemptServerLogout:
  *
@@ -137,8 +137,9 @@ export function findRecipe(domain) {
  *   'home'  Load the site and click whatever reads as a logout control. Works where the
  *           link sits in plain sight; misses menus, which is honest rather than fatal.
  *
- * Deliberately conservative: it only ever clicks something that reads as a logout, and
- * cannot claim more than 'local'.
+ * Deliberately conservative: it only ever clicks something that reads as a logout. Even a
+ * successful click is reported as an attempt, because the page cannot prove whether the
+ * server invalidated a copied token.
  *
  * @param {string} origin
  * @param {'path' | 'home'} mode
@@ -159,7 +160,7 @@ export function heuristicRecipe(origin, mode = 'home', logoutUrl) {
         { op: 'clickText', selector: 'button, a[href*="logout"], [role="button"]', text: CONFIRM, optional: true },
         { op: 'sleep', ms: 1800 }
       ],
-      note: 'Signed out through the site own logout endpoint, so the session ended rather than being abandoned.'
+      note: 'The site logout route was used; server-side invalidation was not independently verified.'
     };
   }
 
@@ -176,7 +177,7 @@ export function heuristicRecipe(origin, mode = 'home', logoutUrl) {
       },
       { op: 'sleep', ms: 2000 }
     ],
-    note: 'Signed out using a logout control found on the page.'
+    note: 'A logout control was activated; server-side invalidation was not independently verified.'
   };
 }
 

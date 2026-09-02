@@ -3,8 +3,8 @@
  * "what we are allowed to do to it right now". Pure - no chrome.* here.
  *
  * The defaults are the whole product for a user who never opens the options page:
- * critical and high tiers get real protection automatically, and everything else is
- * left alone until the user asks. A zero-config extension that nukes IndexedDB on
+ * critical and high tiers get automatic local cleanup, and everything else is left alone
+ * until the user asks. A zero-config extension that nukes IndexedDB on
  * every site at browser close destroys someone's unsaved work on day one and gets
  * uninstalled, so "protect everything" is offered as one toggle rather than assumed.
  */
@@ -32,8 +32,8 @@
  * @property {Record<string, SiteOverride>} sites Keyed by registrable domain.
  * @property {boolean} notifications
  * @property {'none' | 'reload'} tabHandling What to do with your open tabs on a cleared site.
- * @property {'high' | 'always' | 'never'} compromisePrompt When to offer the password-change
- *   route before logging out of a site that cannot revoke sessions elsewhere.
+ * @property {'high' | 'always' | 'never'} compromisePrompt When to offer the trusted-device
+ *   recovery route before attempting sign-out.
  * @property {boolean} useVisitFrequency Order equally-risky confirmed accounts by how often
  *   they are used. Never confirms one. Requires the optional topSites permission.
  * @property {{ enabled: boolean, url: string, lastCheck: number, lastVersion: number, lastError: string }} recipeUpdates
@@ -41,7 +41,7 @@
 
 /** @type {Settings} */
 export const DEFAULT_SETTINGS = {
-  version: 6,
+  version: 7,
   enabled: true,
 
   // False until the welcome screen has been acknowledged. Automatic triggers are held
@@ -60,8 +60,8 @@ export const DEFAULT_SETTINGS = {
   // Screen lock is an explicit "I am walking away" signal, so it is treated harder.
   onLock: { enabled: true, minTier: 'high' },
 
-  // Server-side logout costs a background tab and a few seconds, so it is reserved
-  // for the tiers where invalidating the token (not just deleting it) is the point.
+  // A site sign-out attempt costs a background tab and a few seconds, so it is reserved
+  // for the tiers where giving the site an opportunity to invalidate the token matters.
   serverLogout: { enabled: true, minTier: 'high', timeoutMs: 20000 },
 
   depthByTier: {
@@ -82,17 +82,16 @@ export const DEFAULT_SETTINGS = {
 
   // Reload open tabs on a site once it has been cleared.
   //
-  // Without this the logout genuinely works but does not *look* like it: the page already
-  // on screen keeps its session in memory and carries on showing an avatar and a signed-in
-  // menu until it is reloaded. Users read that as failure, and a security tool that looks
-  // like it failed is one people stop trusting.
+  // Without this a page already on screen may keep old state in memory and carry on
+  // showing an avatar and signed-in menu after local cleanup. Reloading updates the view;
+  // it does not prove remote invalidation.
   //
   // The browser crash that haunted earlier versions came from forcing tabs to about:blank,
   // which no longer happens anywhere. `tabs.reload` is the same operation as pressing F5.
   tabHandling: /** @type {'none' | 'reload'} */ ('reload'),
 
-  // Before logging out of a site that cannot end sessions elsewhere, offer the
-  // password-change route instead.
+  // Before attempting sign-out on a high-risk site, offer the trusted-device recovery
+  // route, including session review, password settings, MFA, and recovery methods.
   //
   // Briefly defaulted to every site, on the grounds that silently logging someone out of a
   // compromised account is worse than a prompt they ignore. The "Been hacked?" walkthrough

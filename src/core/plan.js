@@ -128,9 +128,8 @@ export function buildPlan(domains, trigger, settings) {
       tierReason: reason,
       depth,
       dataTypes: DEPTH_DATA_TYPES[depth],
-      // Picking ONE site is worth a few seconds on any tier: without a server-side logout
-      // the session is not ended, only abandoned - still live, still listed, no longer
-      // visible to the user.
+      // Picking ONE site is worth a few seconds on any tier: without contacting the site,
+      // local clearance gives it no opportunity to invalidate the server token.
       //
       // The confirmed-account bulk action keeps the threshold. Even a real account list
       // can be long, and ten seconds of background navigation per low-risk site would turn

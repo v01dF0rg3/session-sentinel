@@ -61,10 +61,10 @@
     <section class="card" style="margin-top:22px">
       <h2 style="margin-bottom:6px">Coverage</h2>
       <p class="muted" style="margin-bottom:10px">
-        How often the extension reaches a site's real sign-out, rather than only deleting
-        cookies and leaving the session running. Four sites have a hand-written recipe;
-        every other site relies on a generic fallback that has never been measured. This
-        counts results as you use it, so the sites worth a recipe are chosen by evidence.
+        How often the extension reaches a site's sign-out route or control instead of only
+        deleting local data. Reaching it is useful, but does not prove the server rejected
+        a copied token. Separately verified revoke-everywhere results are counted on their
+        own. This evidence identifies the sites most worth improving.
       </p>
       <p id="coverage-headline" style="font-weight:650;margin-bottom:8px"></p>
       <div id="coverage-methods" class="muted" style="margin-bottom:12px"></div>
@@ -98,7 +98,7 @@
       <h2 style="margin-bottom:6px">Activity log</h2>
       <p class="muted" style="margin-bottom:10px">
         Every step of every run, kept across browser restarts. If Chrome closes during a
-        logout, this shows exactly where it got to — look for whether
+        cleanup run, this shows exactly where it got to — look for whether
         <code>run:complete</code> appears before the next <code>browser:startup</code>.
       </p>
       <div class="welcome-actions" style="margin-bottom:12px">

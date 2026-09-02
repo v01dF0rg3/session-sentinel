@@ -140,7 +140,7 @@ test('steps say whether the user visits the site often', () => {
 
 test('each group explains why it is where it is', () => {
   const groups = plan(['google.com', 'chase.com']);
-  assert.match(groups[0].why, /reset through them/);
+  assert.match(groups[0].why, /reset or unlock many other accounts/);
   assert.ok(groups.every((g) => g.label && g.why));
 });
 

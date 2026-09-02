@@ -1,10 +1,9 @@
 /**
  * What a user can actually do about sessions the extension cannot reach.
  *
- * The honest counterpart to automation that did not work. Clearing cookies locally does
- * not end a session on the site's side — it orphans it, leaving it listed as active and
- * usable by anyone holding the token. Something has to tell the user that, and tell them
- * what would genuinely finish the job.
+ * The honest counterpart to automation that cannot verify server state. Clearing cookies
+ * locally can leave a server token active and usable by someone who already copied it.
+ * Something has to direct the user to provider-owned session and security controls.
  *
  * Three situations, three different answers, and the difference matters:
  *
@@ -12,9 +11,8 @@
  *                  GitHub. Tedious but possible, and the link is worth having.
  *   'page'         The site has a sessions or security page; whether it offers a bulk
  *                  revoke has not been checked. Point at it and say so.
- *   'passwordOnly' No session page is known. On most sites a password change is what
- *                  actually invalidates other sessions, so that is the honest advice —
- *                  hedged, because absence from a 23-entry list is not proof.
+ *   'passwordOnly' No session page is known. Point to security settings and explain that
+ *                  a password change may help but is not a universal session revocation.
  *
  * Pure - no chrome.* here.
  */
@@ -38,33 +36,33 @@ export function sessionPageFor(domain) {
 }
 
 /**
- * How this site's other sessions can actually be ended.
+ * Where the user can review this site's sessions and security controls.
  *
- * `endedHere` changes the message rather than the links. Using the site's own sign-out
- * ends this browser's session properly, so the only thing left is other devices - a
- * materially better position than an abandoned session that is still listed as live, and
- * the user should be able to tell the two apart.
+ * `logoutAttempted` changes the message rather than the links. Reaching a site's logout is
+ * stronger than deleting cookies without contacting it, but the extension cannot observe
+ * the server's token table and therefore does not claim that a copied token was rejected.
  *
  * @param {string} domain
- * @param {boolean} [endedHere] The site's own logout was used successfully.
+ * @param {boolean} [logoutAttempted] The site's own logout route/control was used.
  * @returns {RevokeGuidance}
  */
-export function revokeGuidanceFor(domain, endedHere = false) {
+export function revokeGuidanceFor(domain, logoutAttempted = false) {
   const page = SESSION_PAGES[domain];
 
-  if (endedHere) {
+  if (logoutAttempted) {
     return page
       ? {
           kind: 'page',
           url: page.url,
           label: page.label,
           message:
-            'This browser is signed out properly, not just cleared. Sessions on your other devices are untouched — end those here if you want to.' +
+            'The site sign-out was attempted before local data was cleared, but server-side invalidation of a copied token was not independently verified. Review active sessions here and remove anything unfamiliar.' +
             (page.reauth ? ' That page will ask you to verify your identity by email first.' : '')
         }
       : {
           kind: 'passwordOnly',
-          message: 'This browser is signed out properly, not just cleared. Sessions on your other devices are untouched; changing your password is the usual way to end those.'
+          message:
+            'The site sign-out was attempted before local data was cleared, but server-side invalidation of a copied token was not independently verified. From a trusted device, review the site security settings. Change the password if it may be exposed, but do not assume that closes every session.'
         };
   }
 
@@ -72,7 +70,7 @@ export function revokeGuidanceFor(domain, endedHere = false) {
     return {
       kind: 'passwordOnly',
       message:
-        'No way to sign out other devices is known for this site. Check its account security settings — and if there is nothing there, changing your password is usually the only thing that ends sessions elsewhere.'
+        'No verified session-management page is known for this site. From a trusted device, check its account security settings for active sessions or devices. Change the password if it may be exposed, but verify sessions separately.'
     };
   }
 
@@ -82,7 +80,7 @@ export function revokeGuidanceFor(domain, endedHere = false) {
       url: page.url,
       label: page.label,
       message:
-        'This site has no "sign out everywhere" button — sessions must be revoked one at a time from the list, or ended all at once by changing your password.' +
+        'This site has no confirmed "sign out everywhere" button. Review the list and revoke unfamiliar sessions one at a time; do not assume a password change replaces this check.' +
         (page.reauth ? ' Revoking one also requires verifying your identity by email.' : '')
     };
   }
@@ -92,7 +90,7 @@ export function revokeGuidanceFor(domain, endedHere = false) {
     url: page.url,
     label: page.label,
     message:
-      'Other devices may still be signed in. Revoke them from the page below if it offers it; changing your password is the reliable fallback.'
+      'Other devices or copied tokens may still be active. Review this page, remove anything unfamiliar, and use "sign out everywhere" if the site offers it. Change the password if it may be exposed, but verify the session list afterward.'
   };
 }
 
@@ -136,7 +134,7 @@ const DISPLAY_NAMES = {
  * @property {string} domain
  * @property {string} title
  * @property {string} explanation Why the extension cannot do this for them.
- * @property {string} advice What actually ends every other session.
+ * @property {string} advice Safe next steps without promising universal revocation.
  * @property {string} [passwordUrl] Direct link, where one is known.
  * @property {string} siteUrl The site itself - always present, as a starting point.
  * @property {string} [sessionsUrl]
@@ -146,48 +144,43 @@ const DISPLAY_NAMES = {
 /**
  * What to tell someone who may be compromised, before logging them out.
  *
- * The order matters and is the whole point. If an attacker holds a live session, logging
- * *yourself* out is the wrong first move: it surrenders the one authenticated session you
- * control while leaving theirs untouched. Changing the password from the session you
- * already have terminates every other session at once and keeps you signed in.
+ * The order matters. If malware may be active, account recovery belongs on another trusted
+ * device. Review active sessions first, revoke unfamiliar entries or use a site's own
+ * sign-out-everywhere control, then change exposed credentials and review MFA/recovery
+ * methods. Password changes vary by provider and are never described as universal session
+ * revocation.
  *
- * So this is offered before the logout runs, not after it - by then the useful option has
- * been thrown away.
+ * Advice is offered for EVERY site. Even a separately tested global recipe cannot make an
+ * infected device safe or inspect the provider's token database. What degrades is the
+ * specificity, never the honesty:
  *
- * Advice is offered for EVERY site, because no site can currently have its other sessions
- * ended by this extension. What degrades is the specificity, never the honesty:
- *
- *   known password page   a direct link
- *   known session page    a link to that, plus generic password advice
- *   nothing known         the site itself, and where to look once there
- *
- * Returns null only for a site whose global revocation is verified to work - nothing
- * qualifies today, but the check is here so the advice disappears the moment one does.
+ *   known session page    a direct link to review sessions/devices
+ *   known password page   a second direct link when credentials may be exposed
+ *   nothing known         the site itself, and the security controls to look for
  *
  * @param {string} domain
- * @param {boolean} [canRevokeGlobally] A verified global logout exists for this site.
- * @returns {CompromiseAdvice | null}
+ * @param {boolean} [hasVerifiedGlobalRecipe] Whether a separately tested global recipe is known.
+ * @returns {CompromiseAdvice}
  */
-export function compromiseAdviceFor(domain, canRevokeGlobally = false) {
-  if (canRevokeGlobally) return null;
-
+export function compromiseAdviceFor(domain, hasVerifiedGlobalRecipe = false) {
   const page = SESSION_PAGES[domain];
   const pretty = DISPLAY_NAMES[domain] ?? domain;
 
-  const explanation = !page
-    ? `Nothing here can end sessions on your other devices for ${pretty}, and no session list is known for it.`
-    : page.revoke === 'individual'
-      ? `${pretty} has no "sign out everywhere" control - sessions are revoked one at a time` +
-        (page.reauth ? ', and each one needs you to verify your identity by email.' : '.')
-      : `${pretty} offers no way for an extension to end sessions on your other devices.`;
+  const explanation = hasVerifiedGlobalRecipe
+    ? `${pretty} has a separately tested revoke-everywhere recipe, but Session Sentinel still cannot inspect the provider's token state or make an infected device safe.`
+    : !page
+      ? `Session Sentinel cannot verify that ${pretty}'s logout invalidates a copied token, and no session list is known for it.`
+      : page.revoke === 'individual'
+        ? `${pretty} has no confirmed "sign out everywhere" control; review and revoke sessions one at a time` +
+          (page.reauth ? ', and each one needs you to verify your identity by email.' : '.')
+        : `Session Sentinel cannot verify that ${pretty}'s logout invalidates copied tokens or sessions on other devices.`;
 
-  const advice = page?.password
-    ? 'If you think someone else is using your account, change your password instead. That ends every other session immediately, everywhere - and leaves this window signed in, which logging out would not.'
-    : `If you think someone else is using your account, change your password in ${pretty}'s account settings instead. On almost every site that ends all other sessions at once - and it leaves this window signed in, which logging out would not.`;
+  const advice =
+    'If malware may be active, stop and use another trusted device. Review active sessions or devices, remove anything unfamiliar, and use "sign out everywhere" if offered. Change the password if it may be exposed, then review MFA, recovery methods, and connected apps. A password change does not guarantee every session is closed.';
 
   return {
     domain,
-    title: `${pretty} cannot sign out your other devices`,
+    title: `${pretty}: recover from a trusted device`,
     explanation,
     advice,
     passwordUrl: page?.password,

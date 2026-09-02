@@ -1,6 +1,6 @@
 /**
  * Popup. Renders the overview, dispatches actions, and reports outcomes honestly -
- * green only when a site confirmed it revoked sessions everywhere.
+ * green only for separately verified revoke-everywhere behavior.
  */
 
 import { outcomeColor, summarize } from '../engine/report.js';
@@ -96,10 +96,10 @@ function render() {
 
   if (!runnable.length) {
     el.scopeHint.textContent = kept
-      ? `No confirmed accounts will be logged out; ${kept} ${kept === 1 ? 'is' : 'are'} marked Keep.`
-      : 'No confirmed accounts to log out.';
+      ? `No confirmed accounts will be touched; ${kept} ${kept === 1 ? 'is' : 'are'} marked Keep.`
+      : 'No confirmed accounts to process.';
   } else {
-    const scope = `Ends ${runnable.length} confirmed account${runnable.length === 1 ? '' : 's'}, highest risk first (${critical} critical, ${high} high risk).`;
+    const scope = `Attempts site sign-out, then clears local session data for ${runnable.length} confirmed account${runnable.length === 1 ? '' : 's'}, highest risk first (${critical} critical, ${high} high risk).`;
     el.scopeHint.textContent = kept
       ? `${scope} ${kept} kept site${kept === 1 ? '' : 's'} will be skipped.`
       : scope;
@@ -129,13 +129,12 @@ function render() {
 }
 
 /**
- * The list of signed-in sites.
+ * The account and cookie-candidate lists.
  *
  * Cookie discovery finds every cookied domain, which on a real profile is hundreds. The
- * split into "sites you use" and the rest is the difference between a list and a wall.
- * What it is NOT is a change of scope: `sites` is still the whole set, the count above it
- * still reads the whole set, and "Log out of everything" still acts on the whole set. Only
- * the first screenful is opinionated.
+ * split between confirmed accounts, pre-existing candidates, and other cookied sites is
+ * the difference between evidence and a wall of guesses. The bulk account action uses only
+ * the confirmed set; scheduled cleanup may use the broader safety set.
  *
  * A filter escapes the split entirely — someone typing a domain is looking for that
  * domain, and finding nothing because it sat behind a disclosure would be maddening.
@@ -342,10 +341,10 @@ function buildSiteRow(site) {
 
   const logout = document.createElement('button');
   logout.className = 'ghost small reveal';
-  logout.textContent = 'Log out';
+  logout.textContent = 'Attempt sign-out';
   logout.addEventListener('click', () => {
     if (maybePromptCompromise(site.domain, site.tier)) return;
-    act(`Signing out of ${site.domain}...`, { type: 'runSite', domain: site.domain });
+    act(`Attempting sign-out of ${site.domain}...`, { type: 'runSite', domain: site.domain });
   });
 
   // A site nothing could settle gets a real login route instead of another cookie guess.
@@ -424,7 +423,7 @@ function renderCrashReport(crashTrail) {
  * The "leave this site alone" control, used both per row and for the current site.
  *
  * Checked means the site is excluded from every automatic trigger AND from
- * "Log out of confirmed accounts" - the whole point is that it survives the big button.
+ * "Attempt sign-out of confirmed accounts" - the whole point is that it survives the big button.
  * Explicit per-site actions still reach it, so the user is never locked out of clearing
  * a site they deliberately chose to keep.
  *
@@ -436,7 +435,7 @@ function renderCrashReport(crashTrail) {
 function buildKeepControl(domain, kept, labelText) {
   const label = document.createElement('label');
   label.className = 'keep';
-  label.title = `Never clear ${domain} automatically. It will be skipped by scheduled logouts and by "Log out of confirmed accounts".`;
+  label.title = `Never clear ${domain} automatically. It will be skipped by scheduled cleanup and by "Attempt sign-out of confirmed accounts".`;
 
   const box = document.createElement('input');
   box.type = 'checkbox';
@@ -494,14 +493,11 @@ function worstColor(report) {
 }
 
 /**
- * Offer the password-change route before logging out, where it applies.
+ * Interrupt routine sign-out with the safer compromised-account route.
  *
- * The ordering is the substance of this. If someone else is using your account, logging
- * yourself out is the wrong first move: it gives up the one authenticated session you
- * control and leaves theirs running. Changing the password from the session you already
- * have kills every other session at once and keeps you signed in.
- *
- * Offering that *after* the logout would be useless, so the prompt interrupts.
+ * If malware may be active, the first instruction is to move to another trusted device.
+ * The recovery checklist then separates session review, password changes, MFA, and recovery
+ * methods instead of pretending any one action universally revokes every token.
  *
  * @param {string} domain
  * @param {string} tier
@@ -514,12 +510,6 @@ function maybePromptCompromise(domain, tier) {
 
   const advice = compromiseAdviceFor(domain);
   if (!advice) return false;
-
-  // Where there is no direct password link, send the user to the site itself rather than
-  // guessing a settings path. They know their own sites; a confident wrong URL is worse
-  // than an honest starting point.
-  const target = advice.passwordUrl ?? advice.siteUrl;
-  const targetIsDirect = Boolean(advice.passwordUrl);
 
   setStatus('', 'amber');
   el.status.replaceChildren();
@@ -542,52 +532,39 @@ function maybePromptCompromise(domain, tier) {
   actions.style.gap = '6px';
   actions.style.flexWrap = 'wrap';
 
-  const compromised = document.createElement('button');
-  compromised.className = 'primary small';
-  compromised.textContent = 'I think I have been hacked';
-  compromised.title = targetIsDirect
-    ? `Opens ${advice.domain} password settings. Does NOT log you out.`
-    : `Opens ${advice.domain}. Does NOT log you out.`;
-  compromised.addEventListener('click', () => {
-    // Deliberately does not log out: the user keeps the session they need in order to
-    // change the password.
-    chrome.tabs.create({ url: target });
+  const recovery = document.createElement('button');
+  recovery.className = 'primary small';
+  recovery.textContent = 'Open recovery checklist';
+  recovery.title = 'Starts with clean-device guidance and does not log you out automatically';
+  recovery.addEventListener('click', () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL('src/ui/recovery.html') });
     setStatus(
-      targetIsDirect
-        ? `Opened ${advice.domain} password settings. You have not been logged out — change the password there and every other session ends.`
-        : `Opened ${advice.domain}. You have not been logged out — change your password in its account settings and every other session ends.`,
+      'Opened the recovery checklist. If malware may be active on this computer, continue from another device you trust.',
       'amber'
     );
   });
 
+  /** @type {HTMLButtonElement | null} */
+  let sessions = null;
+  if (advice.sessionsUrl) {
+    sessions = document.createElement('button');
+    sessions.className = 'ghost small';
+    sessions.textContent = 'Review active sessions';
+    sessions.title = `Open ${advice.sessionsLabel ?? 'session settings'} for ${advice.domain}; use only on a trusted device`;
+    sessions.addEventListener('click', () => chrome.tabs.create({ url: advice.sessionsUrl }));
+  }
+
   const justLogout = document.createElement('button');
   justLogout.className = 'ghost small';
-  justLogout.textContent = 'No, just log me out';
+  justLogout.textContent = 'Attempt sign-out anyway';
   justLogout.addEventListener('click', () =>
-    act(`Signing out of ${domain}...`, { type: 'runSite', domain })
+    act(`Attempting sign-out of ${domain}...`, { type: 'runSite', domain })
   );
 
-  // A breach is rarely one account. Offer the full ordered walkthrough alongside the
-  // single-site action, since securing this one alone usually is not enough.
-  const allAccounts = document.createElement('button');
-  allAccounts.className = 'ghost small';
-  allAccounts.textContent = 'Secure all my accounts';
-  allAccounts.addEventListener('click', () => {
-    window.open(chrome.runtime.getURL('src/ui/recovery.html'), '_blank');
-  });
-
-  actions.append(compromised, allAccounts, justLogout);
+  actions.append(recovery);
+  if (sessions) actions.append(sessions);
+  actions.append(justLogout);
   el.status.append(title, explanation, adviceText, actions);
-
-  if (advice.sessionsUrl) {
-    const link = document.createElement('button');
-    link.className = 'link';
-    link.style.marginTop = '6px';
-    link.style.display = 'block';
-    link.textContent = `Or review ${advice.sessionsLabel} yourself`;
-    link.addEventListener('click', () => chrome.tabs.create({ url: advice.sessionsUrl }));
-    el.status.append(link);
-  }
 
   return true;
 }
@@ -607,13 +584,12 @@ function describe(report) {
 }
 
 /**
- * What would actually end the sessions this run could not reach.
+ * Provider-owned controls that can finish the recovery work this run could not verify.
  *
- * Deleting cookies here does not end a session on the site's side - it abandons it, and
- * the site carries on listing it as active. What finishes the job differs by site: some
- * let you revoke from a list, some only one at a time, and some offer nothing at all, in
- * which case changing the password is the honest answer. Saying which is which is the
- * whole point.
+ * Deleting cookies here does not ask the site to invalidate its server token. What the
+ * user can review differs by site: some expose a session list, some revoke one at a time,
+ * and some have no known session page. Password settings are offered when useful, without
+ * claiming that a password change closes every session.
  *
  * @param {any} report
  */
@@ -657,14 +633,14 @@ function setBusy(busy) {
   }
 }
 
-el.logoutAll.addEventListener('click', () => act('Ending confirmed sessions...', { type: 'runNow' }));
+el.logoutAll.addEventListener('click', () => act('Attempting site sign-out and clearing local sessions...', { type: 'runNow' }));
 
 el.logoutCurrent.addEventListener('click', () => {
   const domain = overview?.currentDomain;
   if (!domain) return;
   const tier = overview.sites.find((/** @type {any} */ s) => s.domain === domain)?.tier ?? 'low';
   if (maybePromptCompromise(domain, tier)) return;
-  act(`Signing out of ${domain}...`, { type: 'runSite', domain });
+  act(`Attempting sign-out of ${domain}...`, { type: 'runSite', domain });
 });
 
 el.clearCurrent.addEventListener('click', () => {

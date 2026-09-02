@@ -22,9 +22,9 @@
     <section class="card">
       <h2 style="margin-bottom:10px">What it will do</h2>
       <ul class="plain">
-        <li><strong>When you close the browser</strong>, sessions on your high-risk sites are cleared. If Chrome exits before that finishes, it completes on next launch, before your tabs reload.</li>
-        <li><strong>After 30 minutes idle, or when your screen locks</strong>, the same thing happens.</li>
-        <li>Where a site offers a real <em>sign out of all devices</em> control, it is used, so the session dies on your other devices too. Where it does not, only local data is cleared — and it says so rather than claiming more.</li>
+        <li><strong>When you close the browser</strong>, local session data for high-risk sites is cleared on a best-effort basis. If the prior run did not finish, cleanup is retried after the next launch and matching restored tabs are reloaded.</li>
+        <li><strong>After 30 minutes idle, or when your screen locks</strong>, the same local cleanup is triggered.</li>
+        <li>The extension attempts the site's own logout before clearing local data. A clicked control is reported as <em>sign-out attempted</em>, not proof that a copied token died. <em>Verified revoke recipe</em> is reserved for separately tested behavior.</li>
       </ul>
       <p class="muted" style="margin-top:10px">
         Lower-risk sites are left alone by default. You can change any of this in settings.
@@ -39,34 +39,34 @@
       </p>
       <ul id="affected" class="site-list tall"></ul>
       <p class="muted" id="affected-empty" hidden>
-        No signed-in sites detected yet. Session Sentinel will pick them up as you browse.
+        No session candidates detected yet. Session Sentinel will reassess sites as you browse.
       </p>
     </section>
 
     <section class="card">
-      <h2 style="margin-bottom:10px">Two honest limits</h2>
+      <h2 style="margin-bottom:10px">Important limits</h2>
       <p style="margin-bottom:8px">
-        <strong>Deleting cookies protects this computer.</strong> It does not invalidate a
-        token that was already stolen and is being used elsewhere. Only the sites with a real
-        revoke control can do that, and results say which is which.
+        <strong>Deleting cookies removes local session material from this browser.</strong> It does not invalidate a
+        token that was already stolen and is being used elsewhere. Only the website can
+        invalidate that token, and a logout click alone does not prove it happened.
       </p>
       <p style="margin-bottom:8px">
-        <strong>You can be signed out at an awkward moment.</strong> That is the feature
-        working. Use <em>Never clear this site</em> on anything where that would hurt.
+        <strong>Local cleanup can sign you out at an awkward moment.</strong> Use
+        <em>Never clear this site</em> on anything where that would hurt.
       </p>
       <p>
-        <strong>Clearing a site does not always end its session.</strong> Where the site
-        offers a sign-out, this uses it and the session really ends. Where it does not,
-        deleting the cookies only abandons the session: it stays live on the site, listed
-        as active, just no longer visible to you. Results say which happened, and if you
+        <strong>Clearing a site does not prove its server session ended.</strong> Session
+        Sentinel attempts the site's sign-out first, then deletes local data. Unless a
+        revoke-everywhere result was separately verified, review the site's active-session
+        list yourself during an account compromise. If you
         ever think an account has been taken, the <em>Been hacked?</em> link walks you
-        through securing everything in the order that makes it stick.
+        through the safer order and starts with a clean-device warning.
       </p>
     </section>
 
     <div class="welcome-actions">
       <button id="finish" class="primary" type="button">Turn on automatic protection</button>
-      <button id="manual-only" class="ghost" type="button" title="The extension stays installed and you can log out from the popup whenever you like, but nothing happens on a schedule.">
+      <button id="manual-only" class="ghost" type="button" title="The extension stays installed and you can attempt sign-out or clear local data from the popup, but nothing happens on a schedule.">
         Manual only for now
       </button>
     </div>

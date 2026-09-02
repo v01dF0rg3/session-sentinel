@@ -16,6 +16,7 @@ import { expandForIdentity } from '../src/core/identity.js';
 import { DEFAULT_SETTINGS, withDefaults } from '../src/core/policy.js';
 import { findRecipe, heuristicRecipe, isValidRecipe, RECIPES } from '../src/core/recipes.js';
 import { compromiseAdviceFor, revokeGuidanceFor, sessionPageFor } from '../src/core/session-pages.js';
+import { downgradeLegacyClaims } from '../src/core/legacy-claims.js';
 
 test('registrable domain handles multi-label suffixes', () => {
   assert.equal(registrableDomain('mail.google.com'), 'google.com');
@@ -94,7 +95,7 @@ test('ignored sites survive automatic triggers and the confirmed-account bulk ac
 
 test('a site marked "never clear" is never cleared, whatever fires', () => {
   // The user ticks "Never clear this site" on youtube.com. Nothing automatic, and no
-  // press of "Log out of confirmed accounts", may touch it - including when it is swept up in
+  // press of "Attempt sign-out of confirmed accounts", may touch it - including when it is swept up in
   // a run alongside sites that DO get cleared.
   const settings = withDefaults({ onboarded: true, sites: { 'youtube.com': { mode: 'ignored' } } });
   const alongside = ['chase.com', 'youtube.com', 'github.com'];
@@ -138,7 +139,31 @@ test('settings carry a version so behaviour changes can be migrated', () => {
   // A changed default never reaches an existing install on its own - the stored value
   // wins - so every behaviour change that matters needs a migration keyed on this.
   // Bumping the default without bumping this is how a change silently reaches nobody.
-  assert.ok(DEFAULT_SETTINGS.version >= 4);
+  assert.ok(DEFAULT_SETTINGS.version >= 7);
+});
+
+test('old revocation claims are downgraded during upgrade', () => {
+  const coverage = {
+    'old-revoked.example': { domain: 'old-revoked.example', outcome: 'revoked' },
+    'old-logout.example': { domain: 'old-logout.example', outcome: 'loggedOut' },
+    'cleared.example': { domain: 'cleared.example', outcome: 'cleared' }
+  };
+  const runtimeState = {
+    lastReport: {
+      sites: [
+        { domain: 'old-revoked.example', outcome: 'revoked', detail: 'old strong claim' },
+        { domain: 'cleared.example', outcome: 'cleared', detail: 'local only' }
+      ]
+    }
+  };
+
+  const normalized = downgradeLegacyClaims(coverage, runtimeState);
+  assert.equal(normalized.coverage['old-revoked.example'].outcome, 'logoutAttempted');
+  assert.equal(normalized.coverage['old-logout.example'].outcome, 'logoutAttempted');
+  assert.equal(normalized.coverage['cleared.example'].outcome, 'cleared');
+  assert.equal(normalized.runtimeState.lastReport.sites[0].outcome, 'logoutAttempted');
+  assert.match(normalized.runtimeState.lastReport.sites[0].detail, /not independently verified/);
+  assert.equal(normalized.runtimeState.lastReport.sites[1].detail, 'local only');
 });
 
 test('nothing automatic runs before the user has been onboarded', () => {
@@ -314,18 +339,17 @@ test('sites without automation still point the user at their session list', () =
   assert.equal(sessionPageFor('somerandomblog.net'), null);
 });
 
-test('the compromise route is offered before logout, not after', () => {
-  // If someone else holds a live session, logging yourself out is the wrong first move:
-  // it surrenders the one authenticated session you control and leaves theirs running.
-  // Changing the password from the session you already have ends every other session and
-  // keeps you signed in - which is only possible if you have not just logged out.
+test('the compromise route starts on a trusted device and avoids universal promises', () => {
+  // Active malware can steal new credentials or recovery codes. Recovery therefore starts
+  // on a trusted device and treats session review, password changes, and MFA as separate work.
   const advice = compromiseAdviceFor('github.com');
   assert.equal(advice.domain, 'github.com');
-  assert.match(advice.title, /^GitHub cannot sign out your other devices$/);
-  assert.match(advice.explanation, /no "sign out everywhere"/);
+  assert.match(advice.title, /^GitHub: recover from a trusted device$/);
+  assert.match(advice.explanation, /no confirmed "sign out everywhere"/);
   assert.match(advice.explanation, /verify your identity by email/);
-  assert.match(advice.advice, /change your password instead/);
-  assert.match(advice.advice, /leaves this window signed in/);
+  assert.match(advice.advice, /another trusted device/);
+  assert.match(advice.advice, /Review active sessions or devices/);
+  assert.match(advice.advice, /does not guarantee every session is closed/);
   assert.equal(advice.passwordUrl, 'https://github.com/settings/security');
   assert.equal(advice.sessionsUrl, 'https://github.com/settings/sessions');
 });
@@ -347,14 +371,14 @@ test('every site gets the warning, with honest degradation', () => {
   assert.ok(unknown, 'an unknown site still gets the warning');
   assert.equal(unknown.passwordUrl, undefined, 'no password URL is invented');
   assert.equal(unknown.siteUrl, 'https://somerandomblog.net', 'the site itself is the fallback');
-  assert.match(unknown.advice, /account settings/);
-  assert.match(unknown.advice, /leaves this window signed in/);
+  assert.match(unknown.advice, /another trusted device/);
+  assert.match(unknown.advice, /MFA, recovery methods, and connected apps/);
 });
 
-test('the warning disappears once a site can actually revoke globally', () => {
-  // Nothing qualifies today. The check exists so the advice stops the moment one does,
-  // rather than nagging about a problem that has been solved.
-  assert.equal(compromiseAdviceFor('github.com', true), null);
+test('a verified global recipe never suppresses trusted-device recovery advice', () => {
+  const advice = compromiseAdviceFor('github.com', true);
+  assert.match(advice.explanation, /still cannot inspect the provider's token state/);
+  assert.match(advice.advice, /another trusted device/);
 });
 
 test('the warning defaults to high-risk sites', () => {
@@ -365,9 +389,9 @@ test('the warning defaults to high-risk sites', () => {
 });
 
 test('a site with no bulk revoke says so, and names the alternative', () => {
-  // GitHub, confirmed: sessions are revoked one at a time and there is no "sign out
-  // everywhere". Telling the user that a password change is the bulk option is the only
-  // useful thing left to say.
+  // GitHub, confirmed: sessions are revoked one at a time and there is no known bulk
+  // control. Password settings remain relevant if credentials were exposed, but are not
+  // presented as a replacement for reviewing the session list.
   const github = revokeGuidanceFor('github.com');
   assert.equal(github.kind, 'individual');
   assert.match(github.message, /one at a time/);
@@ -375,31 +399,31 @@ test('a site with no bulk revoke says so, and names the alternative', () => {
   assert.equal(github.url, 'https://github.com/settings/sessions');
 });
 
-test('a session ended through the site reads differently from one abandoned', () => {
-  // Clearing cookies leaves a live token on the server that the user can no longer see.
-  // Using the site's own sign-out ends it. Those are materially different outcomes and
-  // the wording has to separate them.
-  const ended = revokeGuidanceFor('github.com', true);
-  assert.match(ended.message, /signed out properly, not just cleared/);
-  assert.match(ended.message, /other devices/);
+test('a site sign-out attempt reads differently from local clearance', () => {
+  // Reaching the site's own control is useful, but does not prove a copied token was rejected.
+  const attempted = revokeGuidanceFor('github.com', true);
+  assert.match(attempted.message, /sign-out was attempted/);
+  assert.match(attempted.message, /not independently verified/);
+  assert.match(attempted.message, /Review active sessions/);
 
   const abandoned = revokeGuidanceFor('github.com', false);
-  assert.notEqual(ended.message, abandoned.message);
+  assert.notEqual(attempted.message, abandoned.message);
   assert.match(abandoned.message, /one at a time/);
 });
 
 test('a site with a known page but unchecked capability is not overclaimed', () => {
   const dropbox = revokeGuidanceFor('dropbox.com');
   assert.equal(dropbox.kind, 'page');
-  assert.match(dropbox.message, /if it offers it/);
+  assert.match(dropbox.message, /if the site offers it/);
   assert.ok(dropbox.url);
 });
 
-test('a site with no known session page falls back to changing the password', () => {
+test('a site with no known session page recommends security review without guarantees', () => {
   const unknown = revokeGuidanceFor('somerandomblog.net');
   assert.equal(unknown.kind, 'passwordOnly');
-  assert.match(unknown.message, /changing your password/);
+  assert.match(unknown.message, /Change the password/);
+  assert.match(unknown.message, /verify sessions separately/);
   assert.equal(unknown.url, undefined);
   // Hedged deliberately: absence from a 23-entry list is not proof the site has nothing.
-  assert.match(unknown.message, /Check its account security settings/);
+  assert.match(unknown.message, /check its account security settings/i);
 });

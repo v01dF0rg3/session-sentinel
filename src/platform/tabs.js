@@ -15,8 +15,8 @@
  * `windows.remove()` was a patch on a risk that did not need to exist.
  *
  * Work now happens in a background tab inside a window the user already has open. If
- * there is no such window, server-side logout is skipped and reported as skipped —
- * honest, and incapable of ending the browser session.
+ * there is no such window, the site sign-out attempt is skipped while local cleanup still
+ * runs — honest, and incapable of ending the browser session.
  */
 
 /**
@@ -142,7 +142,7 @@ export async function findTabsForDomain(domain) {
 /**
  * Reload tabs, gently.
  *
- * This is the only thing the extension does to a user's tab, and it is opt-in. Earlier
+ * This is the only thing the extension does to a user's tab when reload is configured. Earlier
  * versions navigated tabs to about:blank before wiping, so that a single-page app could
  * not write its tokens back afterwards. The reasoning holds, but tab manipulation is now
  * the last remaining suspect in a browser that kept dying mid-logout - and abruptly
@@ -153,15 +153,19 @@ export async function findTabsForDomain(domain) {
  * and is far better exercised than a forced navigation.
  *
  * @param {number[]} tabIds
+ * @returns {Promise<number>} Number successfully reloaded.
  */
 export async function reloadTabs(tabIds) {
+  let reloaded = 0;
   for (const tabId of tabIds) {
     try {
       await chrome.tabs.reload(tabId);
+      reloaded += 1;
     } catch {
       // Tab is gone, or cannot be reloaded. Never fatal.
     }
   }
+  return reloaded;
 }
 
 /**

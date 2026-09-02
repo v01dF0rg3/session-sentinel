@@ -5,7 +5,8 @@
  * is being used by somebody else. Its job is to make a long job finishable: keep the
  * place across restarts, say why each group is where it is, and never lose the thread.
  *
- * Nothing here logs anyone out. That is the point — see the note at the top of the page.
+ * Nothing here changes an account automatically. It links to provider-owned security
+ * controls and keeps progress; see the clean-device warning at the top of the page.
  */
 
 /** @type {any} */
@@ -38,10 +39,9 @@ async function load() {
 /**
  * Fill in the password pages nobody wrote down for us.
  *
- * On most stacks, changing the password IS the revocation — it is what invalidates the
- * sessions on devices the user no longer holds. No protocol lets an extension end a
- * session it did not create, so this link is the most useful thing this page can offer,
- * and until now it existed only for the two dozen sites in a hand-written table.
+ * Password settings are useful when credentials may be exposed, but providers vary on
+ * whether a password change closes existing sessions. This discovery adds a destination;
+ * it never treats the link—or a visit to it—as proof of revocation.
  *
  * It runs after the first render, deliberately. The plan is readable immediately and the
  * links sharpen a moment later; making someone stare at a spinner during a break-in would
@@ -82,15 +82,15 @@ function render() {
     progress.total === 0
       ? 'Nothing to do'
       : progress.done === progress.total
-        ? 'All done'
-        : `${progress.done} of ${progress.total} secured`;
+        ? 'Checklist reviewed'
+        : `${progress.done} of ${progress.total} reviewed`;
 
   byId('progress-detail').textContent =
     progress.total === 0
       ? ''
       : progress.nextDomain
-        ? `Next: ${progress.nextDomain}. Change its password, then tick it off.`
-        : 'Every account on this list has been ticked off. Consider turning on two-factor authentication where you have not already.';
+        ? `Next: ${progress.nextDomain}. Review its sessions and security settings, then tick it off.`
+        : 'Every account on this list has been reviewed. Recheck important session lists and security alerts for anything unfamiliar.';
 
   const pct = progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
   /** @type {HTMLElement} */ (byId('progress-bar')).style.width = `${pct}%`;
@@ -159,11 +159,11 @@ function renderStep(step, isDone, isNext) {
 
   text.append(name);
 
-  // A shared sign-in means one password change covers several accounts. Saying so stops
-  // the user hunting for a password page that does not exist.
+  // A shared identity means one provider may control access to several products. It does
+  // not mean a password change is guaranteed to revoke every product session.
   if (step.sharesSignInWith.length) {
     const shared = document.createElement('p');
-    shared.textContent = `One password change also covers ${step.sharesSignInWith.join(', ')}.`;
+    shared.textContent = `This sign-in may also control ${step.sharesSignInWith.join(', ')}. Verify those sessions after securing the identity provider.`;
     text.append(shared);
   }
   // Included on the strength of session-looking cookies alone. Saying so is what makes
@@ -175,11 +175,13 @@ function renderStep(step, isDone, isNext) {
     text.append(note);
   }
 
-  if (!step.passwordUrl) {
+  if (!step.sessionsUrl) {
     const hint = document.createElement('p');
-    hint.textContent = 'No direct link known — look under account or security settings once the site opens.';
+    hint.textContent = 'No direct session list is known — open security settings and look for Devices, Sessions, Login activity, or Sign out everywhere.';
     text.append(hint);
-  } else if (step.passwordUrlSource === 'discovered') {
+  }
+
+  if (step.passwordUrlSource === 'discovered') {
     // Say where the link came from. It was found by asking the site, not checked by hand,
     // and a link that lands somewhere unexpected is less alarming when it was not promised
     // to be exact.
@@ -191,19 +193,25 @@ function renderStep(step, isDone, isNext) {
   const controls = document.createElement('div');
   controls.className = 'row-control';
 
-  const open = document.createElement('button');
-  open.className = isNext && !isDone ? 'primary small' : 'ghost small';
-  open.textContent = step.passwordUrl ? 'Change password' : 'Open site';
-  open.addEventListener('click', () => chrome.tabs.create({ url: step.passwordUrl ?? step.siteUrl }));
-  controls.append(open);
-
   if (step.sessionsUrl) {
     const sessions = document.createElement('button');
-    sessions.className = 'ghost small';
-    sessions.textContent = step.sessionsLabel ?? 'Sessions';
+    sessions.className = isNext && !isDone ? 'primary small' : 'ghost small';
+    sessions.textContent = 'Review sessions';
     sessions.title = `Review active sessions on ${step.domain}`;
     sessions.addEventListener('click', () => chrome.tabs.create({ url: step.sessionsUrl }));
     controls.append(sessions);
+  }
+
+  const securityTarget = step.passwordUrl ?? step.siteUrl;
+  if (!step.sessionsUrl || securityTarget !== step.sessionsUrl) {
+    const open = document.createElement('button');
+    open.className = !step.sessionsUrl && isNext && !isDone ? 'primary small' : 'ghost small';
+    open.textContent = step.passwordUrl ? 'Password settings' : 'Open security settings';
+    open.title = step.passwordUrl
+      ? 'Change the password if it may be exposed; still review active sessions separately'
+      : `Open ${step.domain} and find its account security controls`;
+    open.addEventListener('click', () => chrome.tabs.create({ url: securityTarget }));
+    controls.append(open);
   }
 
   const tick = document.createElement('label');
@@ -216,7 +224,7 @@ function renderStep(step, isDone, isNext) {
     await load();
   });
   const tickText = document.createElement('span');
-  tickText.textContent = 'Done';
+  tickText.textContent = 'Reviewed';
   tick.append(box, tickText);
   controls.append(tick);
 

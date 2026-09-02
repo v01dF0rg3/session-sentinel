@@ -2,9 +2,9 @@
 
 [![tests](https://github.com/v01dF0rg3/session-sentinel/actions/workflows/test.yml/badge.svg)](https://github.com/v01dF0rg3/session-sentinel/actions/workflows/test.yml)
 
-Session Sentinel is a Chrome extension that helps you sign out of accounts quickly. You can
-run it yourself, or have it act after inactivity, when your screen locks, or when Chrome
-closes.
+Session Sentinel is a Chrome extension that attempts website sign-out and clears local
+session data quickly. You can run it yourself, or have it act after inactivity, when your
+screen locks, or around Chrome closing.
 
 It is designed for the moment when speed matters: you think your computer or an account may
 be compromised and you want to begin securing your sessions now.
@@ -21,14 +21,14 @@ remember that you are signed in; someone who steals a valid token may be able to
 account without typing your password. The attacker gained access to my Discord account,
 Riot Games account, and many others.
 
-During an attack like that, every minute matters. I needed a fast way to start ending
-sessions without searching through every website one at a time. I also needed to know which
-sites had really signed me out and which had only removed data from my computer.
+During an attack like that, every minute matters. I needed a fast way to contact many sites
+and clear local sessions without searching through every website one at a time. I also
+needed honest results: reaching a logout button is useful, but it does not prove that a
+copied token has stopped working.
 
-If I had had a tool like this, I could have started securing my sessions sooner, before the
-attacker reached as many of my accounts. I am building Session Sentinel so other people
-have more options, clearer information, and a guided place to start when they know they are
-being hacked.
+If I had had a tool like this, I could have started containment and account recovery sooner.
+I am building Session Sentinel so other people have more options, clearer information, and
+a guided place to start when they know they are being hacked.
 
 ## What it does
 
@@ -37,35 +37,42 @@ being hacked.
   very little manual work.
 - Tries to use each website's real sign-out process, then clears its local session data.
 - Can act automatically after inactivity, screen lock, sleep, or browser close.
-- Explains whether an account was signed out or only cleared from this computer.
+- Separates a sign-out attempt from verified revocation and local-only cleanup.
 - Provides a **Been hacked?** checklist that starts with the accounts that can unlock all
   your other accounts.
 - Lets you mark sites **Never clear this site** when you want them left alone.
 
 Session Sentinel does not upload a list of your accounts or browsing activity.
 
-## What “logged out” really means
+No Chrome permission gives an extension an authoritative list of every website where the
+user is currently signed in. Session Sentinel therefore requires positive login evidence
+before putting a site in **Confirmed accounts**, and keeps uncertain cookie-only sites in a
+separate candidate list.
+
+## What each result means
 
 Websites do not provide one universal “sign out everywhere” button for extensions. Session
 Sentinel goes as far as each site allows and reports the result honestly.
 
 | Result | What it means |
 | --- | --- |
-| **Revoked** | The site confirmed that sessions on other devices were ended too. This is rare and is only claimed when verified. |
-| **Signed out** | The website ended this browser's session on its server. Other devices may still be signed in. |
+| **Verified revoke recipe** | A separately tested “sign out everywhere” recipe completed. This is rare and does not mean the extension inspected the server's token database. |
+| **Sign-out attempted** | Session Sentinel reached a website logout route or control, then cleared local data. It cannot independently see whether the server rejected a copied token. |
 | **Cleared locally** | Cookies and site data were deleted from this computer. A token already copied by an attacker may still work. |
 | **Failed** | Session Sentinel could not complete even the local cleanup. |
 
-Clearing a cookie is useful, but it is not always revocation. If an attacker already copied
-the token, use the website's session-management page or change the password. Many websites
-invalidate old sessions after a password change, but their behavior varies.
+Clearing local data reduces exposure on this computer. A sign-out attempt may also invalidate
+the session, but Session Sentinel does not claim that unless the behavior was tested
+separately. If a token may have been stolen, review the website's active sessions or devices,
+remove unfamiliar entries, use **sign out everywhere** when available, and change an exposed
+password. Password-change behavior varies, so verify the session list afterward.
 
 ## If you believe you are being hacked now
 
 1. **Move to a known-clean device if possible**, such as another computer or phone you
    trust. An extension running on an infected computer cannot make that computer safe.
 2. **Secure your main email and sign-in accounts first**, such as Google, Microsoft, or
-   Apple. Attackers can use them to reset the passwords for everything else.
+   Apple. Attackers can use them to reset the passwords for many other accounts.
 3. Open Session Sentinel and select **Been hacked?** to work through the guided account
    list.
 4. Use each site's security page to revoke unknown sessions or sign out other devices.
@@ -74,8 +81,9 @@ invalidate old sessions after a password change, but their behavior varies.
    recovery codes that may have been exposed.
 7. Remove the malware—or reinstall Windows—before trusting the affected computer again.
 
-Using **Log out of confirmed accounts** is a useful first response, but it does not replace
-these recovery steps.
+**Attempt sign-out of confirmed accounts** is an optional containment action. If malware may
+still be running, do the recovery steps from a trusted device first; the button does not make
+an infected computer safe and does not prove that stolen tokens were revoked.
 
 ## Install from this repository
 
@@ -105,8 +113,8 @@ These are sites where Session Sentinel found positive evidence of a login. The e
 may have watched the sign-in happen, found signed-in account controls on the page, or seen a
 new authentication cookie appear.
 
-The **Log out of confirmed accounts** button acts only on this list. Riskier accounts are
-handled first.
+The **Attempt sign-out of confirmed accounts** button acts only on this list. Riskier
+accounts are handled first.
 
 ### Pre-existing account candidates
 
@@ -130,7 +138,7 @@ the candidate list.
 ### Other cookied sites
 
 This section contains websites with local data but no reliable evidence of an account. They
-are not included by the manual **Log out of confirmed accounts** button.
+are not included by the manual **Attempt sign-out of confirmed accounts** button.
 
 ### Ordering by usage
 
@@ -154,7 +162,7 @@ security event, but it can sign you out of a site that was not shown as a confir
 
 Use **Never clear this site** for music players, work dashboards, home-control pages, or
 anything else that should survive automatic cleanup. You can still use that site's
-individual **Log out** or **Clear data** button later.
+individual **Attempt sign-out** or **Clear data** button later.
 
 Deep cleanup, including IndexedDB and cache storage, is limited to critical sites by
 default. Clearing those storage types everywhere could destroy offline drafts or locally
@@ -180,8 +188,8 @@ or copied.
 
 The same page includes:
 
-- **Coverage**, which measures how often real website sign-out succeeds instead of only
-  clearing local data.
+- **Coverage**, which measures how often Session Sentinel reaches a website logout route or
+  control. It does not treat that reach as proof that a copied token was invalidated.
 - **Activity log**, which shows whether a run completed or Chrome stopped it partway
   through.
 - **Why these sites are listed**, which identifies the cookie name that made a domain a
@@ -205,9 +213,9 @@ If something unexpected happens, use **Copy report** and include it in a
   once per account or upload your site list.
 
 Chrome shows an **access to all sites** warning because Session Sentinel must be able to
-inspect account controls, run a site's sign-out, and clear session data on whatever sites
-you use. Asking for permission one site at a time would leave unapproved accounts
-unprotected without making that failure obvious.
+inspect account controls, attempt a site's sign-out, and clear session data on whatever sites
+you use. Asking for permission one site at a time could make requested cleanup incomplete
+without making the missing site obvious.
 
 See [PRIVACY.md](PRIVACY.md) for the full privacy policy and [STORE.md](STORE.md) for the
 permission justifications.
@@ -225,13 +233,14 @@ and cross-site requests do not receive the right `SameSite` cookies.
 Session Sentinel instead borrows an existing Chrome window, opens a background tab on the
 site's own origin, and tries these steps in order:
 
-1. A curated, declarative logout recipe when one has been verified.
+1. A curated, declarative logout recipe.
 2. OIDC RP-initiated logout discovered from the site's standard configuration.
 3. A generic search for the site's own visible logout control.
-4. Local cookie and storage destruction, which always runs.
+4. A local cookie and storage cleanup attempt, regardless of the sign-out result.
 
-No window is created or closed. Open tabs on a cleared site can be reloaded so the signed-
-out state is visible immediately.
+No window is created or closed. Open tabs on a cleared site can be reloaded so the local
+cleanup is visible. A successful click or navigation is reported as an attempt, not as proof
+that the server invalidated the session token.
 
 Recipes are data, not remote code. Their interpreter ships inside the extension, navigation
 is restricted to the intended site or a known identity provider, and downloaded bundles

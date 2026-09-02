@@ -4,6 +4,7 @@
  */
 
 import { DEFAULT_SETTINGS, withDefaults } from '../core/policy.js';
+import { downgradeLegacyClaims } from '../core/legacy-claims.js';
 
 const SETTINGS_KEY = 'settings';
 const STATE_KEY = 'runtimeState';
@@ -89,15 +90,17 @@ export async function ensureInitialized() {
  *   v3  reload tabs after clearing, now that the crash is understood and fixed
  *   v4  warn before every per-site logout, not just high-risk ones
  *   v5  back to high-risk only, now that "Been hacked?" carries the same advice
+ *   v6  remove the stale observed-login cache
+ *   v7  downgrade pre-0.34 logout/revocation claims to unverified attempts
  *
  * @returns {Promise<Settings>}
  */
 export async function migrateSettings() {
   const settings = await getSettings();
-  if (settings.version >= 6) return settings;
+  if (settings.version >= 7) return settings;
 
   /** @type {Partial<Settings>} */
-  const patch = { version: 6 };
+  const patch = { version: 7 };
   if (settings.version < 2) patch.notifications = false;
   if (settings.version < 3) patch.tabHandling = 'reload';
   if (settings.version < 5) patch.compromisePrompt = 'high';
@@ -111,6 +114,25 @@ export async function migrateSettings() {
       await chrome.storage.local.remove('observedLogins');
     } catch {
       // A leftover key is inert once nothing reads it.
+    }
+  }
+
+  // Records written before 0.34.0 did not distinguish a reached logout control from
+  // independently verified server invalidation. Preserve their history, but display it
+  // under the weaker safe meaning after upgrade.
+  if (settings.version < 7) {
+    try {
+      const stored = await chrome.storage.local.get(['coverage', STATE_KEY]);
+      const normalized = downgradeLegacyClaims(stored.coverage ?? {}, stored[STATE_KEY] ?? {});
+      /** @type {Record<string, any>} */
+      const legacyPatch = {};
+      if (stored.coverage) legacyPatch.coverage = normalized.coverage;
+      if (stored[STATE_KEY]) legacyPatch[STATE_KEY] = normalized.runtimeState;
+      if (Object.keys(legacyPatch).length) await chrome.storage.local.set(legacyPatch);
+    } catch {
+      // Do not stamp v7 until the downgrade succeeds. Startup may continue with the old
+      // settings, and the migration will retry the next time the extension starts.
+      return settings;
     }
   }
 

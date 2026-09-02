@@ -3,17 +3,17 @@
  *
  * THE PROBLEM THIS SOLVES.
  *
- * The extension cannot make a site revoke its sessions. Nothing can: an extension may only
- * do what a person at the keyboard may do, and "end every session" is a button most sites
- * simply do not have. Every mechanism that could change that — Shared Signals, RISC, CAEP,
+ * The extension cannot compel or independently verify a site's session revocation. It may
+ * only operate controls available to a person at the keyboard, and "end every session" is
+ * a button many sites do not have. Every mechanism that could change that — Shared Signals, RISC, CAEP,
  * device-bound credentials — is either server-to-server or lives in the browser itself.
  * There is no protocol by which a site grants an extension that power, and inventing one
  * would mean shipping a spec no site implements.
  *
- * What is true, and is the whole reason this file exists: on the overwhelming majority of
- * stacks, *changing the password is the revocation*. It invalidates the sessions the user
- * cannot see, on devices they no longer hold. It is the universal primitive, and it is the
- * honest answer whenever rung three of the ladder is missing.
+ * What is true, and is the reason this file exists: after reviewing active sessions, a user
+ * may also need the site's real password settings when credentials could be exposed.
+ * Providers differ on whether a password change invalidates existing sessions, so finding
+ * the page is useful navigation—not proof of revocation.
  *
  * Until now that answer came from a hand-written table of two dozen domains. Everything
  * outside it got "check its account security settings", which is advice-shaped but not

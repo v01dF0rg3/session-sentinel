@@ -1,10 +1,9 @@
 /**
  * Federated sign-in groups.
  *
- * A site whose identity provider is a different domain cannot be logged out on its own.
- * Clearing youtube.com while google.com stays signed in achieves nothing the user can
- * see: the next visit re-authenticates silently. So a logout has to reach the whole
- * group, or admit that it did not.
+ * A site whose identity provider is a different domain may be signed straight back in if
+ * processed alone. Clearing youtube.com while google.com stays signed in can be undone on
+ * the next visit. So cleanup has to consider the whole group and report what it included.
  *
  * Pure - no chrome.* - so the rule is testable.
  */

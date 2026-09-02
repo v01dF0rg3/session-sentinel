@@ -9,10 +9,10 @@ Four layers. The first two are automated; the last two need a real browser, beca
 npm test
 ```
 
-23 tests over the pure logic: risk classification, domain parsing, the planner that
-decides what gets destroyed, and the navigation trust policy. No `chrome.*` calls, so it
-runs anywhere. **This is the layer where a bug silently wipes data the user asked us to
-keep**, which is why it has the most coverage.
+The Node suite covers risk classification, domain parsing, planning, navigation trust,
+account evidence, result semantics, and safety copy. No real `chrome.*` calls are needed.
+**This is the layer where a bug could silently wipe data the user asked us to keep or make
+a security claim the extension did not verify**, which is why it has the most coverage.
 
 ## 2. Injected page logic (browser)
 
@@ -42,7 +42,7 @@ belongs to `session-sentinel-selftest.invalid` — a reserved TLD that cannot re
 anything.
 
 Fourteen checks, covering permissions, storage, idle detection, alarms, cookie enumeration,
-per-type data clearing, the full wipe routine, the hidden background window, script
+per-type data clearing, the full wipe routine, the background work-tab host, script
 injection into a real page, recipes, notifications, and current-site detection.
 
 **Run this first.** It is the fastest way to find out whether the browser-facing layer
@@ -53,13 +53,13 @@ Two results deserve attention even when the overall run passes:
 - *Per-type data clearing* failing for a data type means deep wipes will clear less than
   the name suggests. The engine reports that per site rather than hiding it, but it is
   better known up front.
-- *Hidden background window* reporting a state other than `minimized` means server-side
-  logout still works, but a window may flash on screen while it runs.
+- *Background work tab host* failing means website sign-out cannot be attempted in the
+  current window. The extension never creates or closes a browser window.
 
 ## 4. Extension smoke test (manual)
 
-**Use a separate Chrome profile.** On your normal profile this will genuinely sign you out
-of things, and the automatic triggers fire on their own.
+**Use a separate Chrome profile.** On your normal profile this will delete real site data,
+may sign you out, and can run automatic triggers on its own.
 
 Setup: new profile → sign into two throwaway accounts (one high-risk like a webmail, one
 low-risk) → `chrome://extensions` → Developer mode → Load unpacked.
@@ -77,22 +77,25 @@ Work through these in order. Each one exercises a layer that no automated test r
 
 ### B. Local destruction (Tier 0)
 
-- [ ] Popup lists the sites you are signed into, and does not list obvious junk
-- [ ] **Clear data** on the low-risk site → reload it → you are signed out
+- [ ] Popup lists sites with confirmed login evidence first and does not list obvious junk
+- [ ] **Clear data** on the low-risk site → reload it → local sign-in state is gone
 - [ ] The other site is still signed in (origin scoping works)
 - [ ] Run it again on a site with no cookies — reports cleanly, does not error
 
-### C. Server-side logout (Tiers 1, 3, 4)
+### C. Website sign-out attempt (Tiers 1, 3, 4)
 
-- [ ] Per-site **Log out** on a site with a recipe (GitHub is the best test)
-- [ ] A window appears minimized and closes again within ~20 seconds
-- [ ] Result says **revoked**, not just cleared — check the popup status line
-- [ ] On a site with no recipe, the result honestly says *cleared locally*
+- [ ] Per-site **Attempt sign-out** on a site with a recipe
+- [ ] Work happens in a background tab inside an existing window; no window is created or closed
+- [ ] A reached route/control says **sign-out attempted**, not **revoked**
+- [ ] A site where no sign-out control is reached honestly says **cleared locally**
+- [ ] To validate real invalidation for a specific site, use a throwaway account on a second
+      device and test whether its existing session stops working. Do not infer this from the
+      extension's local browser state.
 
 ### D. Confirmed-only bulk scope
 
 - [ ] Leave at least one domain in **Log in to pre-existing accounts** unresolved
-- [ ] Press **Log out of confirmed accounts**
+- [ ] Press **Attempt sign-out of confirmed accounts**
 - [ ] The result names only confirmed accounts; the unanswered candidate is untouched
 
 ### E. Candidate login flow
@@ -105,21 +108,21 @@ Work through these in order. Each one exercises a layer that no automated test r
 ### F. Keep-site guarantee
 
 - [ ] Tick **Never clear this site** on one site
-- [ ] Press **Log out of confirmed accounts**
-- [ ] That site is still signed in; the other confirmed, non-kept accounts are not
+- [ ] Press **Attempt sign-out of confirmed accounts**
+- [ ] That site's local data remains; the other confirmed, non-kept accounts are processed
 - [ ] The status line mentions the kept site was skipped
 
 ### G. Triggers
 
 - [ ] Set inactivity to 1 minute in settings, leave the machine alone, confirm it fires
-- [ ] Lock the screen → unlock → high-risk sites are signed out
-- [ ] Close the browser entirely, reopen → high-risk sites are signed out
+- [ ] Lock the screen → unlock → configured high-risk local session data is cleared
+- [ ] Close the browser entirely, reopen → any unfinished configured local cleanup is retried
 - [ ] Restored tabs on cleared sites reload themselves rather than showing a stale
       signed-in page
 
 ### H. Failure behaviour
 
-- [ ] Turn off networking and press **Log out of confirmed accounts** — it should report
+- [ ] Turn off networking and press **Attempt sign-out of confirmed accounts** — it should report
       failures honestly, not claim success
 - [ ] Check the service worker console (`chrome://extensions` → *service worker*) for
       unhandled errors after each of the above
@@ -132,6 +135,6 @@ From `chrome://extensions`, click **service worker** to open its console, then i
 2. Which checklist item failed and what happened instead
 3. The status text shown in the popup
 
-The most useful failures are ones where **the extension reported success but nothing
-happened** — that is the failure mode this codebase is built to prevent, and any instance
-of it is a bug worth stopping for.
+The most useful failures are ones where **the extension claims more than it verified**.
+Examples include calling a click a revocation, calling partial local cleanup complete, or
+processing an unconfirmed account in the confirmed-only manual action.
