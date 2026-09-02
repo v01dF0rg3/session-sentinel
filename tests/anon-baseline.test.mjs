@@ -6,37 +6,33 @@
  * bloomberg.com hands a stranger `_session_id_backup` — httpOnly, Secure, 36-char opaque
  * value — before anyone signs in. It is a real session cookie belonging to nobody.
  *
- * So the fixtures here are measured, not invented. Every cookie set below was taken from an
- * actual credentials-omitted fetch of the site.
+ * The empty-Incognito measurement proved that the name is ambiguous, not that the normal
+ * session behind the same name is logged out. These tests pin that distinction so a future
+ * implementation cannot accidentally turn equal name sets into an anonymous verdict.
  */
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { baselineFrom, judgeSignIn } from '../src/core/anon-baseline.js';
+import { judgeSignIn } from '../src/core/anon-baseline.js';
 
-// Measured 1 September 2026, fetched with no cookies.
-const BLOOMBERG = baselineFrom(['_pxhd', 'session_id', '_session_id_backup', 'agent_id', 'session_key']);
-const GITHUB = baselineFrom(['_gh_sess', '_octo', 'logged_in']);
-
-test('a site whose session cookies are handed to strangers is not an account', () => {
-  // The whole reason this file exists. Every session-looking cookie bloomberg.com sets is
-  // one you get for showing up, so a jar containing exactly those proves nothing.
-  const verdict = judgeSignIn(['_session_id_backup', 'session_id', 'session_key'], BLOOMBERG);
-  assert.equal(verdict, 'anonymous');
+test('an auth-looking name also seen in Incognito remains unknown', () => {
+  // Measured on Bloomberg in Chrome 152. The same name exists in a genuinely empty
+  // private jar, but Bloomberg could upgrade that name's server-side session after login.
+  assert.equal(judgeSignIn(['_session_id_backup'], null), 'unknown');
 });
 
-test('cookies a stranger never receives are what an account looks like', () => {
-  // A signed-in GitHub user has the stranger's three plus their own.
-  const verdict = judgeSignIn(['_gh_sess', 'user_session', 'dotcom_user'], GITHUB);
-  assert.equal(verdict, 'signedIn');
+test('extra normal-profile names are not retrospectively called accounts', () => {
+  // GitHub usually adds user_session and dotcom_user after login, but if the extension was
+  // installed afterwards it did not observe that transition. A homepage probe may also
+  // miss anonymous names set on deeper routes, so absence there is not confirmation.
+  assert.equal(judgeSignIn(['_gh_sess', 'user_session', 'dotcom_user'], null), 'unknown');
 });
 
 test('with nothing ruled out, the answer is unknown rather than yes', () => {
   // Guessing "signed in" from an unexamined session cookie is exactly what put
   // bloomberg.com on a list headed SIGNED IN.
   assert.equal(judgeSignIn(['_session_id_backup'], null), 'unknown');
-  assert.equal(judgeSignIn(['_session_id_backup'], { anonymous: [], usable: false }), 'unknown');
 });
 
 test('no session-looking cookies at all is a plain no, not an unknown', () => {
@@ -48,59 +44,44 @@ test('what was already there at first sight is a question, not a no', () => {
   // anonymity: for someone already signed in when the extension was installed, their real
   // auth cookie is sitting in it. "Everything you have was there at first sight" means we
   // cannot tell — so it becomes a question for the user, never a silent dismissal.
-  const verdict = judgeSignIn(['nonsession', 'dp1'], null, ['nonsession', 'dp1']);
+  const verdict = judgeSignIn(['nonsession', 'dp1'], ['nonsession', 'dp1']);
   assert.equal(verdict, 'unknown');
 });
 
-test('only the stranger list can rule an account out', () => {
-  // First sight can promote, never dismiss. Only cookies known to be handed to people with
-  // no account can prove there is no account.
-  assert.equal(judgeSignIn(['session_id'], BLOOMBERG, ['session_id']), 'anonymous');
-  assert.equal(judgeSignIn(['session_id'], null, ['session_id']), 'unknown');
+test('a value rotation hidden behind the same name cannot be inferred', () => {
+  // chrome.cookies gives the value, but anonymous sessions rotate too and some sites
+  // upgrade a server-side record without changing it. The safe evidence is names only.
+  assert.equal(judgeSignIn(['session_id'], ['session_id']), 'unknown');
 });
 
 test('a new cookie appearing after first sight is a sign-in', () => {
-  const verdict = judgeSignIn(['nonsession', 'dp1', 'ebay_session'], null, ['nonsession', 'dp1']);
+  const verdict = judgeSignIn(['nonsession', 'dp1', 'ebay_session'], ['nonsession', 'dp1']);
   assert.equal(verdict, 'signedIn');
 });
 
-test('the two sources combine, with first sight only ever promoting', () => {
-  // The probe missed `_octo`, so on its own it reports an account that is not there.
-  const partial = baselineFrom(['_gh_sess']);
-  assert.equal(judgeSignIn(['_gh_sess', '_octo'], partial), 'signedIn', 'probe alone is fooled');
-
-  // First sight knows `_octo` was always present, which removes the false remainder. The
-  // two sources now disagree — the probe calls `_octo` unexplained, first sight calls it
-  // old — and a disagreement is a question, not a verdict.
-  assert.equal(judgeSignIn(['_gh_sess', '_octo'], partial, ['_gh_sess', '_octo']), 'unknown');
-});
-
-test('an empty probe result is not mistaken for a site that sets no cookies', () => {
-  // A failed fetch and a genuinely cookie-free site look identical from here, so neither
-  // is allowed to confirm anything.
-  const failed = baselineFrom([]);
-  assert.equal(failed.usable, false);
-  assert.equal(judgeSignIn(['session_token'], failed), 'unknown');
+test('first sight treats names as a set, not an order-sensitive fingerprint', () => {
+  assert.equal(judgeSignIn(['b', 'a'], ['a', 'b']), 'unknown');
+  assert.equal(judgeSignIn(['b', 'a', 'new'], ['a', 'b']), 'signedIn');
 });
 
 test('an empty first-sight record is evidence; a missing one is not', () => {
   // [] says "this domain had no auth cookies when we first looked", which makes any auth
   // cookie now a sign-in. null says "we have never looked". Collapsing the two would make
   // every unseen site look signed in.
-  assert.equal(judgeSignIn(['user_session'], null, []), 'signedIn');
-  assert.equal(judgeSignIn(['user_session'], null, null), 'unknown');
+  assert.equal(judgeSignIn(['user_session'], []), 'signedIn');
+  assert.equal(judgeSignIn(['user_session'], null), 'unknown');
 });
 
-test('a baseline recorded this instant rules out everything, so it must not be used yet', () => {
+test('a first-sight record written this instant must not judge itself', () => {
   // The bug this caught, stated as an invariant. On a first scan the baseline is written
   // from the very cookies being judged, so subtracting it leaves nothing and every site
   // grades anonymous. Worse than a wrong answer: nothing is left marked unknown, so the
   // probe that would settle it never runs. The list came back holding one entry.
   const jar = ['user_session', '_gh_sess'];
-  assert.equal(judgeSignIn(jar, null, jar), 'unknown', 'judging itself proves nothing');
-  assert.equal(judgeSignIn(jar, null, null), 'unknown', 'and a first sighting proves nothing');
+  assert.equal(judgeSignIn(jar, jar), 'unknown', 'judging itself proves nothing');
+  assert.equal(judgeSignIn(jar, null), 'unknown', 'and a first sighting proves nothing');
   assert.equal(
-    judgeSignIn([...jar, 'arrived_later'], null, jar),
+    judgeSignIn([...jar, 'arrived_later'], jar),
     'signedIn',
     'only a cookie that appeared afterwards is evidence'
   );
@@ -141,7 +122,7 @@ test('first sight names which domains are new, and never revises one', async () 
     'the record describes the world before we were watching, so it is never overwritten'
   );
   assert.equal(
-    judgeSignIn(['sid', 'auth_token'], null, second.sight['a.example']),
+    judgeSignIn(['sid', 'auth_token'], second.sight['a.example']),
     'signedIn',
     'the cookie that arrived after first sight is the sign-in'
   );
@@ -162,4 +143,38 @@ test('a stated answer is remembered and can be taken back', async () => {
 
   await setVerdict('bloomberg.com', null);
   assert.deepEqual(await getVerdicts(), { 'github.com': 'mine' }, 'null forgets it');
+});
+
+// --- baselining at page load ---------------------------------------------------------
+
+test('a visit records the site as it looks before signing in', async () => {
+  // The whole point. Baselining only when the popup opens misses the ordinary case:
+  // someone arrives at a site and signs in within the same minute, so the auth cookie is
+  // already present when the baseline is written and the site can never be more than a
+  // question. Captured at page load, the sign-in that follows confirms itself.
+  const bag = fakeStorage();
+  globalThis.chrome.cookies = {
+    getAll: async () => [
+      { name: '_gh_sess', value: 'x'.repeat(32), httpOnly: true, secure: true },
+      { name: '_ga', value: 'GA1.2.3', httpOnly: false, secure: false }
+    ]
+  };
+
+  const { baselineOnVisit } = await import('../src/platform/first-sight.js');
+  assert.equal(await baselineOnVisit('github.com'), true);
+  assert.deepEqual(bag.firstSight['github.com'], ['_gh_sess'], 'auth-grade names only');
+
+  // The sign-in a minute later is a name that was not there before.
+  assert.equal(judgeSignIn(['_gh_sess', 'user_session'], bag.firstSight['github.com']), 'signedIn');
+});
+
+test('a domain with no cookies is never recorded', async () => {
+  // This is what keeps the record from becoming a browsing history. Every fact stored is
+  // already readable from chrome.cookies.getAll; a bare visit must not add one.
+  const bag = fakeStorage();
+  globalThis.chrome.cookies = { getAll: async () => [] };
+
+  const { baselineOnVisit } = await import('../src/platform/first-sight.js');
+  assert.equal(await baselineOnVisit('never-visited.example'), false);
+  assert.equal(bag.firstSight, undefined, 'nothing was written at all');
 });

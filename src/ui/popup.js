@@ -40,6 +40,9 @@ let filterText = '';
 /** Is the long tail of unrecognised sites expanded? Also survives re-renders. */
 let showOther = false;
 
+/** Are unanswered account candidates expanded? Kept separate from confirmed accounts. */
+let showQuestions = false;
+
 /**
  * @param {any} message
  * @returns {Promise<any>}
@@ -78,13 +81,13 @@ function render() {
   // "225 sites" under a heading reading SIGNED IN was the claim that started this: most of
   // those had set a cookie while the user read a page. The shown count leads because it is
   // the honest one; the total stays visible because it is what a full run covers.
-  const shown = overview.relevance?.used?.length ?? sites.length;
+  const shown = overview.relevance?.confirmed?.length ?? overview.relevance?.used?.length ?? sites.length;
   el.siteCount.textContent =
-    shown === sites.length ? `${sites.length} signed in` : `${shown} of ${sites.length}`;
+    shown === sites.length ? `${sites.length} confirmed` : `${shown} confirmed`;
   el.siteCount.title =
     shown === sites.length
       ? ''
-      : `${shown} with signs of an account. All ${sites.length} have cookies here and are covered by a full run.`;
+      : `${shown} confirmed accounts. ${overview.relevance?.questionCount ?? 0} possible pre-existing accounts stay out unless you add them. All ${sites.length} sites shown by cookie discovery remain covered by a full run.`;
   el.filter.hidden = sites.length < 8;
 
   if (!sites.length) {
@@ -110,6 +113,7 @@ function render() {
   }
 
   renderSiteList(sites, overview.relevance);
+  void renderFrequencyOffer();
 
   if (lastReport?.sites?.length) {
     const when = new Date(lastReport.finishedAt);
@@ -138,7 +142,7 @@ function renderSiteList(sites, relevance) {
   el.siteList.replaceChildren();
 
   if (sites.length === 0) {
-    el.siteList.append(emptyRow('No signed-in sites found yet. They appear here as you browse.'));
+    el.siteList.append(emptyRow('No sites with session-looking cookies found.'));
     return;
   }
 
@@ -154,16 +158,40 @@ function renderSiteList(sites, relevance) {
   }
 
   const usedSet = new Set(relevance?.used ?? sites.map((s) => s.domain));
+  const configuredSet = new Set(relevance?.configured ?? []);
+  const questionSet = new Set(relevance?.questions ?? []);
   const used = sites.filter((s) => usedSet.has(s.domain));
-  const other = sites.filter((s) => !usedSet.has(s.domain));
+  const configured = sites.filter((s) => !usedSet.has(s.domain) && configuredSet.has(s.domain));
+  const questions = sites.filter((s) => !usedSet.has(s.domain) && !configuredSet.has(s.domain) && questionSet.has(s.domain));
+  const other = sites.filter((s) => !usedSet.has(s.domain) && !configuredSet.has(s.domain) && !questionSet.has(s.domain));
+
+  if (!used.length) {
+    el.siteList.append(emptyRow('No confirmed accounts yet. Add only accounts you recognise below.'));
+  }
 
   for (const group of groupByTier(used)) {
     el.siteList.append(tierHeading(group.tier, group.sites.length));
     for (const site of group.sites) el.siteList.append(buildSiteRow(site));
   }
 
+  if (configured.length) {
+    el.siteList.append(listHeading('Kept sites', configured.length));
+    for (const site of configured) el.siteList.append(buildSiteRow(site));
+  }
+
+  if (questions.length) {
+    el.siteList.append(questionDisclosureRow(questions.length));
+    if (showQuestions) {
+      el.siteList.append(reviewInstructionRow());
+      for (const group of groupByTier(questions)) {
+        el.siteList.append(tierHeading(group.tier, group.sites.length));
+        for (const site of group.sites) el.siteList.append(buildSiteRow(site));
+      }
+    }
+  }
+
   if (!other.length) return;
-  el.siteList.append(disclosureRow(other.length));
+  el.siteList.append(otherDisclosureRow(other.length));
   if (!showOther) return;
 
   for (const group of groupByTier(other)) {
@@ -206,7 +234,7 @@ function tierHeading(tier, count) {
  *
  * @param {number} count
  */
-function disclosureRow(count) {
+function otherDisclosureRow(count) {
   const row = document.createElement('li');
   row.className = 'disclosure';
 
@@ -215,7 +243,7 @@ function disclosureRow(count) {
   button.type = 'button';
   button.textContent = showOther
     ? 'Hide other sites'
-    : `Show ${count} other site${count === 1 ? '' : 's'} with sign-in cookies`;
+    : `Show ${count} other cookied site${count === 1 ? '' : 's'}`;
   button.title =
     'Sites you have cookies for but no sign of using. A full run clears them either way.';
   button.addEventListener('click', () => {
@@ -224,6 +252,53 @@ function disclosureRow(count) {
   });
 
   row.append(button);
+  return row;
+}
+
+/**
+ * @param {string} label
+ * @param {number} count
+ */
+function listHeading(label, count) {
+  const row = document.createElement('li');
+  row.className = 'group-heading';
+  row.setAttribute('role', 'presentation');
+  row.textContent = label;
+
+  const n = document.createElement('span');
+  n.className = 'count';
+  n.textContent = String(count);
+  row.append(n);
+  return row;
+}
+
+/** @param {number} count */
+function questionDisclosureRow(count) {
+  const row = document.createElement('li');
+  row.className = 'disclosure';
+
+  const button = document.createElement('button');
+  button.className = 'link';
+  button.type = 'button';
+  button.textContent = showQuestions
+    ? 'Hide pre-existing account candidates'
+    : `Add pre-existing accounts (${count} candidate${count === 1 ? '' : 's'})`;
+  button.title =
+    'These sites have session-looking cookies, but Chrome cannot tell whether the session belongs to an account. They stay out unless you add them.';
+  button.addEventListener('click', () => {
+    showQuestions = !showQuestions;
+    render();
+  });
+
+  row.append(button);
+  return row;
+}
+
+function reviewInstructionRow() {
+  const row = document.createElement('li');
+  row.className = 'review-note';
+  row.textContent =
+    'Add only accounts you recognise. Ignore the rest—they stay out of Confirmed accounts and recovery.';
   return row;
 }
 
@@ -243,7 +318,9 @@ function buildSiteRow(site) {
   // The strongest reason leads. "not confirmed yet" is deliberately not phrased as a
   // claim: saying "you are signed in here" about a site the user has no account on is the
   // complaint this whole mechanism exists to answer.
-  if (site.reasons?.length) {
+  if (site.needsConfirmation && site.mode !== 'ignored') {
+    name.title = 'Its cookies could belong to an account or to an anonymous visitor. Your answer settles which list it belongs in.';
+  } else if (site.reasons?.length) {
     const [reason] = site.reasons;
     name.title = reason.startsWith('cookies')
       ? `Shown because its ${reason}.`
@@ -264,7 +341,7 @@ function buildSiteRow(site) {
   // A site nothing could settle gets asked about instead of guessed at. Four rules in a
   // row were wrong from cookies alone, and the user is the only party who actually knows
   // whether they have an account. One answer, respected permanently.
-  if (site.reasons?.[0]?.startsWith('cookies')) {
+  if (site.needsConfirmation && site.mode !== 'ignored') {
     actions.append(buildVerdictControl(site.domain));
   } else {
     actions.append(logout, buildKeepControl(site.domain, site.mode === 'ignored', 'Keep'));
@@ -275,11 +352,11 @@ function buildSiteRow(site) {
 }
 
 /**
- * "Is this yours?" — the two answers, on a row that cannot be settled automatically.
+ * A positive-only review in practice: adding a real account is the only required action.
  *
  * Worded as a question about the account rather than about the extension, because that is
- * the thing the user knows. "Not mine" hides the site for good; it does not exempt it from
- * a wipe, which is a different decision made by the Keep control.
+ * The optional "Not mine" action merely cleans up the candidate queue; ignoring a row is
+ * safe because unanswered candidates already stay out. Neither action changes wipe scope.
  *
  * @param {string} domain
  */
@@ -289,12 +366,12 @@ function buildVerdictControl(domain) {
 
   const label = document.createElement('span');
   label.className = 'muted';
-  label.textContent = 'Yours?';
+  label.textContent = 'Account?';
   wrap.append(label);
 
   for (const [verdict, text, title] of [
-    ['mine', 'Yes', 'Treat this as an account of yours from now on'],
-    ['notMine', 'No', 'Stop listing this site. It is still cleared by a full run.']
+    ['mine', 'Add', 'Add this as an account of yours'],
+    ['notMine', 'Not mine', 'Remove this candidate. It is still cleared by a full run.']
   ]) {
     const button = document.createElement('button');
     button.className = 'ghost small';
@@ -617,3 +694,53 @@ el.openRecovery.addEventListener('click', () => {
 el.openOptions.addEventListener('click', () => chrome.runtime.openOptionsPage());
 
 load();
+
+/**
+ * Offer to order the list by the sites the user actually uses most.
+ *
+ * The permission behind it is optional and off by default, and the control for it lived in
+ * Settings — where a preference nobody finds is a preference nobody has. It is offered
+ * here instead, at the moment the list is long enough for ordering to matter, and only
+ * once: dismissing it is remembered.
+ *
+ * Frequency orders and never confirms. A site visited daily is not thereby an account, and
+ * a bank visited twice a year does not sink below a news site. It breaks ties inside a
+ * risk tier and does nothing else.
+ */
+const OFFER_KEY = 'frequencyOfferDismissed';
+
+async function renderFrequencyOffer() {
+  const offer = document.getElementById('frequency-offer');
+  if (!offer) return;
+
+  const enoughToSort = (overview?.sites?.length ?? 0) >= 8;
+  if (overview?.settings?.useVisitFrequency || !enoughToSort) {
+    offer.hidden = true;
+    return;
+  }
+
+  try {
+    const stored = await chrome.storage.local.get(OFFER_KEY);
+    offer.hidden = Boolean(stored[OFFER_KEY]);
+  } catch {
+    offer.hidden = false;
+  }
+}
+
+document.getElementById('frequency-enable')?.addEventListener('click', async () => {
+  // Must be called straight from the click: Chrome only grants an optional permission
+  // during a user gesture, and awaiting anything first loses it.
+  const granted = await chrome.permissions.request({ permissions: ['topSites'] });
+  if (!granted) {
+    await chrome.storage.local.set({ [OFFER_KEY]: true });
+    document.getElementById('frequency-offer').hidden = true;
+    return;
+  }
+  await send({ type: 'updateSettings', patch: { useVisitFrequency: true } });
+  await load();
+});
+
+document.getElementById('frequency-dismiss')?.addEventListener('click', async () => {
+  await chrome.storage.local.set({ [OFFER_KEY]: true });
+  document.getElementById('frequency-offer').hidden = true;
+});

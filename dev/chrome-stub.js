@@ -98,8 +98,6 @@
   // can be looked at against a profile of realistic size.
   const openNow = new Set(['youtube.com', 'github.com']);
   const frequentNow = new Set(['google.com', 'reddit.com']);
-  const actedOn = new Set(['github.com', 'slack.com']);
-
   // Signed-in is now the primary signal, and it is deliberately narrow: only a handful of
   // the fixture's domains carry anything resembling a real auth cookie. Being critical is
   // no longer enough on its own - that rule is what put aol.com on screen.
@@ -110,19 +108,18 @@
   sites.push({ domain: 'bloomberg.com', tier: 'low', tierReason: 'known site', mode: 'default', cookieCount: 5 });
 
   const usedDomains = sites
-    .filter((s) => signedInNow.has(s.domain) || actedOn.has(s.domain) || s.mode === 'ignored' || s.domain === 'bloomberg.com')
+    .filter((s) => signedInNow.has(s.domain))
     .map((s) => s.domain);
+  const configuredDomains = sites.filter((s) => s.mode === 'ignored' && !signedInNow.has(s.domain)).map((s) => s.domain);
+  const questionDomains = ['bloomberg.com'];
 
-  // The real overview attaches these via core/relevance.js. The preview needs them so the
-  // "Yours?" control, which keys off an unconfirmed reason, is actually exercised.
+  // The real overview attaches these via core/relevance.js. The preview needs the marker so
+  // the separate review queue and its "Yours?" control are both exercised.
   for (const site of sites) {
     // After 0.27.1 almost everything starts as a question: a first-sight baseline can
     // contain the user's own auth cookie, so it may promote but never dismiss.
-    site.reasons = actedOn.has(site.domain)
-      ? ['you have signed out of this before']
-      : signedInNow.has(site.domain) || site.domain === 'bloomberg.com'
-        ? ['cookies look like a sign-in, not confirmed yet']
-        : [];
+    site.reasons = signedInNow.has(site.domain) ? ['signed in here'] : [];
+    site.needsConfirmation = questionDomains.includes(site.domain);
   }
 
   const overview = () => ({
@@ -132,10 +129,13 @@
     lastReport,
     relevance: {
       used: usedDomains,
-      otherCount: sites.length - usedDomains.length,
-      narrowed: sites.length - usedDomains.length >= 3,
+      confirmed: [...signedInNow],
+      configured: configuredDomains,
+      questions: questionDomains,
+      questionCount: questionDomains.length,
+      otherCount: sites.length - usedDomains.length - questionDomains.length,
+      narrowed: sites.length > usedDomains.length,
       canRankByFrequency: settings.useVisitFrequency,
-      unconfirmed: ['bloomberg.com']
     },
     recipeStatus: { total: 3, source: 'built-in', bundleVersion: null, fetchedAt: null },
     crashTrail: crashTrail.value
@@ -165,7 +165,7 @@
 
   globalThis.chrome = {
     storage: { local: area(store.local), session: area(store.session) },
-    permissions: { getAll: () => delay({ permissions: ['storage','alarms','idle','cookies','browsingData','scripting','tabs','notifications'], origins: ['<all_urls>'] }, 10) },
+    permissions: { request: () => delay(true, 200), contains: () => delay(false, 10), getAll: () => delay({ permissions: ['storage','alarms','idle','cookies','browsingData','scripting','tabs','notifications'], origins: ['<all_urls>'] }, 10) },
     idle: { queryState: () => delay('active', 10) },
     alarms: {
       create: () => delay(undefined, 5),

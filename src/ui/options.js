@@ -336,7 +336,7 @@ async function renderFrequencyStatus() {
   node.className = 'muted';
   node.textContent = overview.settings.useVisitFrequency
     ? granted
-      ? 'On. Used only to order equally-risky accounts.'
+      ? 'On. Used only to order equally-risky confirmed accounts.'
       : 'Permission is missing — switch this off and on again to restore it.'
     : '';
 }

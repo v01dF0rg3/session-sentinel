@@ -143,3 +143,45 @@ test('each group explains why it is where it is', () => {
   assert.match(groups[0].why, /reset through them/);
   assert.ok(groups.every((g) => g.label && g.why));
 });
+
+test('unverified candidates are included, and ranked below confirmed accounts', () => {
+  // Being strict here once emptied the plan entirely: on a fresh profile nothing is
+  // confirmed yet, so "Been hacked?" produced zero steps and told a possibly-breached user
+  // to browse a little and come back. The costs are reversed from the popup — a wrong row
+  // here is a password page you glance at and skip; a missing row is an account that never
+  // comes up during a breach.
+  const groups = buildRecoveryPlan(
+    ['github.com', 'gitlab.com'],
+    DEFAULT_SETTINGS,
+    'high',
+    new Set(),
+    new Set(['github.com'])
+  );
+
+  const steps = groups.flatMap((g) => g.steps);
+  assert.equal(steps.length, 2, 'the candidate is not dropped');
+  assert.deepEqual(
+    steps.map((s) => s.domain),
+    ['gitlab.com', 'github.com'],
+    'confirmed first, guesses at the bottom of the tier where they can be skipped'
+  );
+  assert.equal(steps[1].unverified, true, 'and it says which it is');
+  assert.equal(steps[0].unverified, false);
+});
+
+test('sensitivity still outranks confirmation', () => {
+  // An unverified critical account must not sit below a confirmed high-risk one. The
+  // question is how sure we are that it is an account, not how dangerous it would be.
+  const settings = withDefaults({ sites: { 'gitlab.com': { tier: 'high', mode: 'default' } } });
+  const groups = buildRecoveryPlan(
+    ['github.com', 'gitlab.com'],
+    settings,
+    'high',
+    new Set(),
+    new Set(['github.com'])
+  );
+  assert.deepEqual(
+    groups.flatMap((g) => g.steps).map((s) => s.domain),
+    ['github.com', 'gitlab.com']
+  );
+});

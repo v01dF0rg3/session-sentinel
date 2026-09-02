@@ -27,9 +27,9 @@ import { clearRecoveryState, getRecoveryState, markRecoveryStep, updateRecoveryS
 import { dropFrequencyPermission, getFrequentDomains, hasFrequencyPermission } from '../platform/frequency.js';
 import { clearCoverage, readCoverage } from '../platform/coverage.js';
 import { summariseCoverage } from '../core/coverage.js';
-import { partitionSites } from '../core/relevance.js';
+import { confirmedAccountDomains, partitionSites } from '../core/relevance.js';
 import { knownChangePasswordSupport, probeChangePassword } from '../platform/change-password.js';
-import { recordFirstSight } from '../platform/first-sight.js';
+import { baselineOnVisit, recordFirstSight } from '../platform/first-sight.js';
 import { getVerdicts, setVerdict } from '../platform/site-verdict.js';
 import { judgeSignIn } from '../core/anon-baseline.js';
 
@@ -229,9 +229,30 @@ async function handleMessage(message) {
       const settings = await getSettings();
       const state = await getRecoveryState();
       const minTier = message.minTier ?? state.minTier;
-      const known = likelyLoggedIn(await discoverSessions()).map((s) => s.domain);
-      const frequent = settings.useVisitFrequency ? await getFrequentDomains() : new Set();
-      const groups = buildRecoveryPlan(known, settings, minTier, frequent);
+      const sessions = likelyLoggedIn(await discoverSessions());
+      const signals = await relevanceSignals(settings, sessions);
+      // Recovery calls these rows accounts and may send the user to password/security
+      // pages. Auth-looking cookies, open tabs and topSites are not enough for that claim.
+      // They remain review questions in the popup until first-sight evidence or the user's
+      // answer confirms them.
+      // Confirmed accounts, plus the candidates nothing has settled. The popup is strict
+      // because a false positive there is a false claim; recovery is inclusive because the
+      // costs are reversed. A wrong row here is a password page the user glances at and
+      // skips; a missing row is a compromised account that never comes up during a breach.
+      // Being strict in both places left this list empty on a fresh profile, telling
+      // someone who may have just been hacked to "browse a little and come back".
+      const confirmed = confirmedAccountDomains(sessions, signals);
+      const unverified = new Set(
+        [...(signals.unconfirmed ?? [])].filter((domain) => !confirmed.includes(domain))
+      );
+      const frequent = signals.frequent ?? new Set();
+      const groups = buildRecoveryPlan(
+        [...confirmed, ...unverified],
+        settings,
+        minTier,
+        frequent,
+        unverified
+      );
       // Fill in from what has already been discovered, so a second visit renders complete
       // instead of blank-then-populated. Anything still missing is probed on request.
       applyPasswordPages(groups, await knownChangePasswordSupport());
@@ -329,8 +350,8 @@ async function getOverview() {
   // Split them so the recognisable ones are what gets seen; the run is unaffected, and
   // the popup still states the true total next to the button that acts on it.
   const signals = await relevanceSignals(settings, sessions);
-  const { used, other, narrowed } = partitionSites(discovered, signals);
-  const sites = [...used, ...other];
+  const { used, configured, questions, other, narrowed } = partitionSites(discovered, signals);
+  const sites = [...used, ...configured, ...questions, ...other];
 
   const bundle = await getStoredBundle();
   const recipes = await getActiveRecipes();
@@ -343,12 +364,15 @@ async function getOverview() {
     // to know about the split to be correct.
     relevance: {
       used: used.map((s) => s.domain),
+      confirmed: [...(signals.signedIn ?? [])],
+      configured: configured.map((s) => s.domain),
+      questions: questions.map((s) => s.domain),
       otherCount: other.length,
       narrowed,
       canRankByFrequency: settings.useVisitFrequency,
-      // Sites whose cookies look session-bearing but which nothing has settled. The popup
-      // asks the user about these rather than guessing.
-      unconfirmed: [...(signals.unconfirmed ?? [])]
+      // Kept as a count in addition to the domain list so future UIs can summarize the
+      // review queue without treating it as part of the signed-in count.
+      questionCount: questions.length
     },
     lastReport: state.lastReport,
     // A breadcrumb still present means a previous run never reached its end - the browser
@@ -442,15 +466,13 @@ async function relevanceSignals(settings, sessions) {
   }
 
   const frequent = settings.useVisitFrequency ? await getFrequentDomains() : new Set();
-  const acted = new Set((await readCoverage()).map((entry) => entry.domain));
-
   // Live evidence only, deliberately.
   //
   // An earlier version kept a permanent record of every domain ever judged signed in, so a
   // site would survive the logout that removed the cookies proving it. That made a
   // heuristic mistake immortal: sites written in under a rule later found wrong stayed
-  // listed, because nothing re-checked them. `acted` covers the same case honestly - it
-  // records what this extension DID, not what it concluded.
+  // listed, because nothing re-checked them. A coverage record cannot replace the old
+  // cache: broad cleanup also acts on false positives, so action is not account evidence.
   //
   // The candidate test in sessions.js is not the answer either. bloomberg.com passes it
   // while handing `_session_id_backup` to strangers, so each candidate is checked against
@@ -482,12 +504,22 @@ async function relevanceSignals(settings, sessions) {
     // First sight can promote but never dismiss - it may well contain the user's own auth
     // cookie, if they were signed in before installing. Anything it cannot promote is a
     // question, not a no.
-    if (judgeSignIn(site.authNames, null, everSeen) === 'signedIn') signedIn.add(site.domain);
+    if (judgeSignIn(site.authNames, everSeen) === 'signedIn') signedIn.add(site.domain);
     else unconfirmed.add(site.domain);
   }
 
-  return { signedIn, unconfirmed, open, frequent, acted };
+  return { signedIn, unconfirmed, open, frequent };
 }
+
+chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
+  // A page load is when a site can still be seen as it looks to someone not yet signed in.
+  // Baselining here is what lets a sign-in a minute later confirm itself with no question.
+  if (changeInfo.status !== 'complete' || !tab.url) return;
+  if (!tab.url.startsWith('http://') && !tab.url.startsWith('https://')) return;
+
+  const host = hostnameFromUrl(tab.url);
+  if (host) void baselineOnVisit(registrableDomain(host));
+});
 
 /** Keep Chrome's idle threshold in step with the configured timeout. */
 async function applyIdleInterval() {

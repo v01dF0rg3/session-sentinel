@@ -34,8 +34,8 @@
  * @property {'none' | 'reload'} tabHandling What to do with your open tabs on a cleared site.
  * @property {'high' | 'always' | 'never'} compromisePrompt When to offer the password-change
  *   route before logging out of a site that cannot revoke sessions elsewhere.
- * @property {boolean} useVisitFrequency Order equally-risky accounts by how often they are
- *   used. Requires the optional topSites permission.
+ * @property {boolean} useVisitFrequency Order equally-risky confirmed accounts by how often
+ *   they are used. Never confirms one. Requires the optional topSites permission.
  * @property {{ enabled: boolean, url: string, lastCheck: number, lastVersion: number, lastError: string }} recipeUpdates
  */
 

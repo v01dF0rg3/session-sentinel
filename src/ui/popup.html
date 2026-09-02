@@ -54,7 +54,7 @@
 
     <section class="sites">
       <div class="sites-head">
-        <h2>Signed in</h2>
+        <h2>Confirmed accounts</h2>
         <span id="site-count" class="count"></span>
       </div>
       <input
@@ -62,10 +62,14 @@
         class="filter"
         type="search"
         placeholder="Filter sites…"
-        aria-label="Filter the list of signed-in sites"
+        aria-label="Filter confirmed accounts and other discovered sites"
         autocomplete="off"
       />
-      <ul id="site-list" class="site-list" aria-label="Sites you are signed into"></ul>
+      <p id="frequency-offer" class="offer" hidden>
+        <button id="frequency-enable" class="link" type="button">Put the sites you use most first</button>
+        <button id="frequency-dismiss" class="link muted" type="button" aria-label="Dismiss">Not now</button>
+      </p>
+      <ul id="site-list" class="site-list" aria-label="Confirmed and possible accounts"></ul>
     </section>
 
     <footer class="footer">

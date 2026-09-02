@@ -36,6 +36,29 @@
     <p class="muted" id="env" style="margin-top:16px"></p>
 
     <section class="card" style="margin-top:22px">
+      <h2 style="margin-bottom:6px">Private-store account check</h2>
+      <p class="muted" style="margin-bottom:10px">
+        Tests the one remaining browser-native way to distinguish an account cookie from
+        an anonymous session: load one site in a genuinely empty Incognito cookie store
+        and compare names with the normal profile. It never reads or reports cookie
+        values. The site receives one ordinary private visit. The result is diagnostic
+        only: sites may reuse the same cookie name before and after sign-in, so no account
+        verdict is saved and the account list is not changed.
+      </p>
+      <div class="note" style="margin:10px 0 12px">
+        Before each run, close <strong>every</strong> Incognito window and open exactly one
+        fresh blank window. Do not use it during the test. Close it afterwards to erase
+        the temporary private cookies and site data.
+      </div>
+      <div class="welcome-actions" style="margin-bottom:12px">
+        <input id="baseline-domain" class="domain-input" type="text" value="bloomberg.com"
+          aria-label="Domain to test" spellcheck="false" />
+        <button id="baseline-run" class="primary" type="button">Probe privately</button>
+      </div>
+      <pre id="baseline-result" class="log">Not run yet.</pre>
+    </section>
+
+    <section class="card" style="margin-top:22px">
       <h2 style="margin-bottom:6px">Coverage</h2>
       <p class="muted" style="margin-bottom:10px">
         How often the extension reaches a site's real sign-out, rather than only deleting
@@ -54,13 +77,13 @@
     </section>
 
     <section class="card" style="margin-top:22px">
-      <h2 style="margin-bottom:6px">Why these sites are listed</h2>
+      <h2 style="margin-bottom:6px">Which cookies look like sign-ins</h2>
       <p class="muted" style="margin-bottom:10px">
-        A site is called signed in when it has one convincing auth cookie, or two
-        near-misses. Plenty of sites set server-side cookies for visitors who have never
-        had an account — eBay's <code>nonsession</code> is one — so if something here is
-        not an account of yours, the cookie that caused it is named below. Send it over and
-        the rule gets fixed. Names only; values are never shown or copied.
+        This is the raw cookie-candidate stage, not the confirmed-account list. Plenty of
+        sites set server-side cookies for visitors who have never had an account, so those
+        candidates remain questions unless first-sight evidence or your answer settles
+        them. The cookie that triggered each candidate is named below. Names only; values
+        are never shown or copied.
       </p>
       <p id="signin-headline" style="font-weight:650;margin-bottom:4px"></p>
       <p id="signin-method" class="muted" style="margin-bottom:10px"></p>

@@ -18,10 +18,8 @@
  * has ever opened, with timestamps, to answer a question about domains. So relevance is
  * assembled from signals we already hold for other reasons:
  *
- *   signedIn  A cookie that looks like a real auth token, or a sign-in already recorded.
+ *   signedIn  A sign-in observed after first sight, or the user's explicit answer.
  *             The direct answer to the actual question.
- *   acted     This extension has signed the user out of it before, so there was an
- *             account, even if the cookies proving it are the ones we removed.
  *
  * `open` and `frequent` are deliberately NOT among them. They say a site matters to the
  * user, not that the user has an account on it — and being open in a tab was how ebay.com
@@ -35,8 +33,9 @@
  * unnecessary, it is the bug: a bank the user is signed into shows because they are signed
  * into it, and one they are not does not need the space.
  *
- * The set grows as the extension is used, which is the right direction: day one shows the
- * handful of tabs that are open, and it gets more useful from there.
+ * An attempted cleanup is deliberately not evidence. A full run tries every plausible
+ * session-bearing site, including false positives, so remembering that attempt would make
+ * the original guess permanent under a different name.
  *
  * Pure - no chrome.* here.
  */
@@ -47,7 +46,6 @@
  * @property {Set<string>} [unconfirmed] Session-bearing cookies, nothing checked yet.
  * @property {Set<string>} [open] Domains with a tab open right now.
  * @property {Set<string>} [frequent] Domains from chrome.topSites, when granted.
- * @property {Set<string>} [acted] Domains the extension has run on before.
  */
 
 /**
@@ -58,17 +56,11 @@
  */
 
 /**
- * Reasons that put a site on the list. Both are evidence of an *account*, which is the
- * only thing being asked.
+ * Reasons that put a site on the confirmed list. Unanswered candidates are kept separate:
+ * they are useful questions, but they are not accounts until something settles them.
  */
 const QUALIFYING = /** @type {const} */ ([
-  ['signedIn', 'signed in here'],
-  ['acted', 'you have signed out of this before'],
-  // Ranked last, and worded as the doubt it is. A site whose cookies look session-bearing
-  // but which nothing has checked yet is worth showing - hiding every unchecked site left
-  // the list holding one entry, which is its own kind of wrong - but it must not be
-  // claimed as an account. This is the row that disappears once the site is asked.
-  ['unconfirmed', 'cookies look like a sign-in, not confirmed yet']
+  ['signedIn', 'signed in here']
 ]);
 
 /**
@@ -128,9 +120,29 @@ export function compareSites(a, b) {
 }
 
 /**
+ * Domains safe to call accounts in recovery UI.
+ *
+ * Visit frequency, open tabs and unanswered auth-looking cookies are intentionally absent.
+ * They can order a confirmed set or produce a question, but none proves authentication.
+ *
+ * @param {{ domain: string }[]} sites
+ * @param {RelevanceSignals} signals
+ * @returns {string[]}
+ */
+export function confirmedAccountDomains(sites, signals = {}) {
+  return sites
+    .filter((site) => signals.signedIn?.has(site.domain))
+    .map((site) => site.domain);
+}
+
+/**
  * @template {SiteLike} T
  * @typedef {object} Partitioned
  * @property {(T & { reasons: string[] })[]} used Sites to show first.
+ * @property {(T & { reasons: string[] })[]} configured Unconfirmed sites the user chose
+ *   to keep, visible so the choice can be reversed without calling it an account.
+ * @property {(T & { reasons: string[], needsConfirmation: boolean })[]} questions
+ *   Plausible accounts that need the user's answer.
  * @property {(T & { reasons: string[] })[]} other Everything else, behind a disclosure.
  * @property {boolean} narrowed The split actually hid something.
  */
@@ -151,25 +163,31 @@ export function partitionSites(sites, signals = {}) {
   /** @type {any[]} */
   const used = [];
   /** @type {any[]} */
+  const configured = [];
+  /** @type {any[]} */
+  const questions = [];
+  /** @type {any[]} */
   const other = [];
 
   for (const site of sites) {
     const reasons = reasonsToShow(site, signals);
-    const entry = { ...site, reasons, context: contextFor(site, signals) };
-    if (reasons.length || site.mode === 'ignored') used.push(entry);
+    const needsConfirmation = signals.unconfirmed?.has(site.domain) ?? false;
+    const entry = { ...site, reasons, context: contextFor(site, signals), needsConfirmation };
+    if (reasons.length) used.push(entry);
+    else if (site.mode === 'ignored') configured.push(entry);
+    else if (needsConfirmation) questions.push(entry);
     else other.push(entry);
   }
 
   used.sort(compareSites);
+  configured.sort(compareSites);
+  questions.sort(compareSites);
   other.sort(compareSites);
 
-  // A split that hides two sites is not worth the disclosure control it costs. Below the
-  // threshold, show everything and let the list be the list.
-  if (other.length < 3) {
-    return { used: [...used, ...other].sort(compareSites), other: [], narrowed: false };
-  }
-
-  return { used, other, narrowed: true };
+  // Even one unanswered candidate stays out of a section headed "Signed in". The former
+  // small-list shortcut merged up to two unknown sites back into that section, turning a
+  // layout convenience into a false authentication claim.
+  return { used, configured, questions, other, narrowed: questions.length + other.length > 0 };
 }
 
 /**

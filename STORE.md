@@ -17,19 +17,19 @@ The store asks for these one at a time. Each answer states the concrete feature.
 |---|---|
 | `cookies` | Reads cookie names and domains to detect which sites the user is signed into, and deletes session cookies when clearing a site. |
 | `browsingData` | Deletes cookies and site storage (localStorage, IndexedDB, service workers, cache storage) for a specific site when the user logs out of it. |
-| `tabs` | Identifies the current site for the popup's per-site actions, and reloads the user's tabs on a site after clearing it so the signed-out state is visible. The extension never closes a tab or window belonging to the user. |
-| `scripting` | Operates a site's own "sign out of all devices" control inside a background tab. This is the only way to invalidate a session server-side rather than merely deleting the local copy. |
+| `tabs` | Identifies the current site for the popup's per-site actions, reloads the user's tabs on a site after clearing it so the signed-out state is visible, and supports a manual diagnostic that opens one inactive tab in an already-open, empty Incognito window. The extension closes only temporary tabs it created, never a tab or window belonging to the user. |
+| `scripting` | Operates a site's own "sign out of all devices" control inside a background tab. It also verifies that the manual Incognito diagnostic reached a real page rather than a browser error page; that check reads only the page URL and ready state, never content. |
 | `storage` | Saves the user's settings and the report of the last run, locally. |
 | `alarms` | Keeps the service worker alive during a multi-site logout, which can take longer than the service worker idle timeout. |
 | `idle` | Detects inactivity and screen lock, which are two of the automatic logout triggers the user can enable. |
 | `notifications` | Shows the result of an automatic logout, so the user knows what was revoked, what was only cleared locally, and what failed. |
-| `host_permissions: <all_urls>` | The extension cannot know in advance which sites the user is signed into — finding and clearing them is its entire purpose. Access is used only to delete session data and to operate sites' own logout controls. Page content is never read or transmitted. |
+| `host_permissions: <all_urls>` | The extension cannot know in advance which sites the user is signed into — finding and clearing them is its entire purpose. Access is used to delete session data, operate sites' own logout controls, and load a single user-entered domain during the explicit private-store diagnostic. Page content is never read or transmitted. |
 
 ### Optional permissions
 
 | Permission | Justification |
 |---|---|
-| `topSites` | Optional and off by default. Orders equally-sensitive accounts in the breach-recovery checklist by how often the user visits them, so the accounts they actually use come first. Read on the device, used to sort a list, never stored or transmitted. Never affects how risky a site is considered. |
+| `topSites` | Optional and off by default. Orders equally-sensitive, already-confirmed accounts in the breach-recovery checklist by how often the user visits them. Read on the device, used only to sort, never stored or transmitted. It cannot confirm an account, add a site to recovery, or affect risk. |
 
 ## Remote code
 

@@ -21,27 +21,38 @@ So two questions are kept apart, deliberately:
   cookies at all, bloomberg.com hands a stranger `_session_id_backup` — httpOnly, Secure,
   opaque. So a cookie counts only if it *arrived after this extension first saw the site*.
   An anonymous session cookie is issued on first contact and then sits there; an
-  authenticated one appears when you sign in.
+  authenticated one may appear—or the site may upgrade the same opaque session—when you
+  sign in.
 
   Sites you were already signed into before installing cannot be separated that way, and no
-  rule over cookie names can do it either. Those rows ask you — **Yours? Yes / No** — once,
-  and remember the answer.
+  rule over cookie names can do it either. Those rows sit behind **Add pre-existing
+  accounts**. Add only the accounts you recognise; every unanswered site stays out, so you
+  do not have to reject dozens of anonymous-cookie sites. **Not mine** is available only if
+  you want to tidy that optional queue.
 
-Being open in a tab, or high in your top sites, orders the list but never joins it — a
-sign-in page is maximum evidence of attention and zero evidence of an account.
+Being open in a tab, or high in your top sites, orders confirmed accounts but never joins
+that set — a sign-in page is maximum evidence of attention and zero evidence of an account.
+The recovery checklist consumes the same confirmed set, so turning on visit-frequency
+ordering cannot promote Bloomberg, eBay, or any other unanswered site into an account.
 
 If a site is listed that is not yours, **Settings → Check it works → Why these sites are
 listed** names the exact cookie that caused it.
 
-Everything else collapses behind **"Show N other sites with sign-in cookies"**. It is a
-display split, not a change of scope: the total stays on screen, the filter still searches
-all of it, and "Log out of all sessions" still clears all of it.
+Unanswered candidates and cleanup-only sites have separate disclosures. A site explicitly
+marked Keep remains visible in its own section so that choice can be reversed, but Keep is
+not treated as proof of authentication. This is a display split, not a change of scope: the
+total stays on screen, the filter still searches all of it, and "Log out of all sessions"
+still clears all of it.
+
+There is no Bloomberg rule or domain deny-list in this decision. The same invariant applies
+to every domain: an anonymous-looking or otherwise unresolved cookie candidate cannot enter
+Confirmed accounts or recovery merely because the site is open or frequently visited.
 
 The answer is re-derived from the cookie jar every time the list is read, never cached. An
 earlier version remembered its own verdicts and made its own mistakes permanent — a site
-judged signed in under a rule later found wrong stayed listed regardless. A site the
-extension has signed you out of stays listed on the strength of what it *did*, which is a
-record of an action rather than of a guess.
+judged signed in under a rule later found wrong stayed listed regardless. Cleanup history is
+not account evidence either: a broad run also acts on false positives, so remembering that
+action would preserve the same guess under another name.
 
 This is not `chrome.history`: history tells you what pages you opened, which cannot
 distinguish a news article from an inbox, and is a great deal to ask for to answer a
@@ -188,6 +199,15 @@ button for sharing the results.
 
 Safe to run at any time: it counts your cookies without reading or deleting them, and the
 only data it clears belongs to a reserved test domain that cannot exist.
+
+The same page also contains a separate, explicit **Private-store account check**.
+That is not part of the fourteen checks: it contacts only the domain you enter, once, in a
+fresh blank Incognito store and compares cookie names with the normal profile. It refuses
+to run if the private jar is not empty and never exposes cookie values. It is diagnostic:
+matching names prove the name is ambiguous, but not that the normal session is logged out,
+because a site may reuse one cookie name on both sides of sign-in. It saves no verdict and
+does not change the list. Close every Incognito window after a probe to erase its temporary
+site data.
 
 ## What clearing cookies does not do
 

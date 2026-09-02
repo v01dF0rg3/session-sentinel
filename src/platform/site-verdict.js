@@ -5,7 +5,8 @@
  * because the thing being inferred is not in the cookies. bloomberg.com hands anonymous
  * visitors a cookie that is httpOnly, Secure, opaque and named `_session_id_backup`; there
  * is no signal that separates it from an authenticated one. The header that would settle it
- * is stripped by Chrome, and reading it needs permission to observe all network traffic.
+ * is stripped by Chrome. An empty-Incognito measurement proves the name is ambiguous, but
+ * not whether a normal session with that same name was upgraded by sign-in.
  *
  * One party knows for certain, and it is not the browser. "I have never made an eBay
  * account" is not a heuristic anyone can improve on, so it is asked for and then respected

@@ -1,11 +1,11 @@
 {
   "name": "session-sentinel",
-  "version": "0.27.1",
+  "version": "0.28.0",
   "private": false,
   "type": "module",
   "description": "Manifest V3 Chrome extension that ends web sessions on demand, on idle, on lock, or at browser close.",
   "scripts": {
-    "test": "node --test tests/core.test.mjs tests/trust.test.mjs tests/bundle.test.mjs tests/tabs.test.mjs tests/identity.test.mjs tests/recipe-run.test.mjs tests/compromise.test.mjs tests/coverage.test.mjs tests/relevance.test.mjs tests/change-password.test.mjs tests/sign-in.test.mjs tests/anon-baseline.test.mjs",
+    "test": "node --test tests/core.test.mjs tests/trust.test.mjs tests/bundle.test.mjs tests/tabs.test.mjs tests/identity.test.mjs tests/recipe-run.test.mjs tests/compromise.test.mjs tests/coverage.test.mjs tests/relevance.test.mjs tests/change-password.test.mjs tests/sign-in.test.mjs tests/anon-baseline.test.mjs tests/incognito-probe.test.mjs",
     "icons": "node dev/make-icons.mjs icons"
   },
   "license": "MIT",

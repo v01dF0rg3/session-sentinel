@@ -32,6 +32,7 @@ import { siblingsOf } from './identity.js';
  * @property {string} [sessionsLabel]
  * @property {string[]} sharesSignInWith Accounts secured by the same password.
  * @property {boolean} frequent The user visits this site often.
+ * @property {boolean} unverified Included as a candidate; not a confirmed account.
  */
 
 /**
@@ -75,9 +76,10 @@ export function recoveryCategory(domain) {
  * @param {import('./policy.js').Settings} settings
  * @param {RiskTier} [minTier]
  * @param {Set<string>} [frequent] Domains the user visits often, if known.
+ * @param {Set<string>} [unverified] Domains included as candidates rather than confirmed.
  * @returns {RecoveryGroup[]}
  */
-export function buildRecoveryPlan(domains, settings, minTier = 'high', frequent = new Set()) {
+export function buildRecoveryPlan(domains, settings, minTier = 'high', frequent = new Set(), unverified = new Set()) {
   /** @type {Map<RecoveryCategory, RecoveryStep[]>} */
   const byCategory = new Map();
   const included = new Set(domains);
@@ -101,7 +103,11 @@ export function buildRecoveryPlan(domains, settings, minTier = 'high', frequent 
       // A shared sign-in means one password change covers several accounts - worth
       // saying, so the user does not hunt for a password page that does not exist.
       sharesSignInWith: siblingsOf(domain).filter((d) => included.has(d)),
-      frequent: frequent.has(domain)
+      frequent: frequent.has(domain),
+      // Cookies that look session-bearing, with nothing to prove the session is an
+      // account. Included anyway: during a breach, a step the user can skip costs a
+      // glance, while an account missing from the list costs the account.
+      unverified: unverified.has(domain)
     };
 
     const list = byCategory.get(category) ?? [];
@@ -123,6 +129,9 @@ export function buildRecoveryPlan(domains, settings, minTier = 'high', frequent 
       steps: steps.sort(
         (a, b) =>
           tierOrder[a.tier] - tierOrder[b.tier] ||
+          // Confirmed accounts before guesses, so the certain work comes first and the
+          // maybes sit at the bottom of each tier where they can be skipped.
+          Number(a.unverified) - Number(b.unverified) ||
           Number(b.frequent) - Number(a.frequent) ||
           a.domain.localeCompare(b.domain)
       )

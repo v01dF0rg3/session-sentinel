@@ -1,6 +1,6 @@
 # Privacy Policy — Session Sentinel
 
-Last updated: 31 August 2026. Applies to version 0.20.0.
+Last updated: 2 September 2026. Applies to version 0.27.4.
 
 ## The short version
 
@@ -21,7 +21,7 @@ The extension never reads page content, form fields, passwords, or browsing hist
 
 ## Network requests it makes
 
-Session Sentinel contacts only the sites you are logging out of, and only while
+Session Sentinel normally contacts only the sites you are logging out of, and only while
 performing a logout:
 
 1. **A `GET` to `https://<site>/.well-known/openid-configuration`** — a public, standard
@@ -30,8 +30,16 @@ performing a logout:
 2. **Loading the site's own logout or sessions page in a hidden background tab**, so its
    sign-out control can be used the way you would use it yourself.
 
-That is all. No request is ever made to any server operated by the extension's author,
-and no information about your browsing is sent anywhere.
+There is one separate, manual diagnostics experiment. If you explicitly enter a domain
+and press **Probe privately**, the extension loads that site's homepage once in a fresh,
+empty Incognito cookie store. It compares cookie **names** with the normal profile to test
+whether the site gives the same auth-looking names to visitors with no account. The result
+is displayed for diagnosis but no account verdict or baseline is saved. Cookie values are
+never displayed, stored, or sent anywhere. The site sees an ordinary Incognito visit;
+closing every Incognito window erases the temporary private cookies and site data.
+
+No request is ever made to any server operated by the extension's author, and no list of
+your sites is transmitted anywhere.
 
 ## What it does not do
 
@@ -52,7 +60,8 @@ does nothing on sites you never explicitly approved, while its icon sits in your
 implying you are protected. A security tool that quietly fails is worse than one that asks
 once, honestly.
 
-This access is used only to delete session data and to operate sites' own logout controls.
+This access is used to delete session data, operate sites' own logout controls, and run the
+one-domain private-store experiment only when the user presses its button.
 
 ## Recipe updates (off by default)
 
@@ -75,7 +84,7 @@ check.
 
 ## Most-visited sites (optional, off by default)
 
-Session Sentinel can order equally-sensitive accounts by how often you use them, so a
+Session Sentinel can order equally-sensitive confirmed accounts by how often you use them, so a
 breach recovery starts with the accounts you actually live in. **This is off unless you
 turn it on**, and turning it on asks Chrome for a separate permission you can refuse or
 revoke at any time.
@@ -83,10 +92,11 @@ revoke at any time.
 - It uses `chrome.topSites` — the short list of sites Chrome puts on your new-tab page —
   not your browsing history. No page URLs, no timestamps, no visit counts.
 - The list is read on the machine, used to sort a list, and never stored or transmitted.
+- A top-site entry never confirms an account or moves a possible account into recovery.
 - It **never changes how risky a site is considered**. A news site read daily is not more
   dangerous to lose than a bank visited twice a year, and treating it as such would get the
-  ordering exactly backwards. It only breaks ties between accounts already judged equally
-  sensitive.
+  ordering exactly backwards. It only breaks ties between confirmed accounts already judged
+  equally sensitive.
 
 Switching it off removes the permission.
 

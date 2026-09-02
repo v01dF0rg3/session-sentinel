@@ -166,6 +166,15 @@ function renderStep(step, isDone, isNext) {
     shared.textContent = `One password change also covers ${step.sharesSignInWith.join(', ')}.`;
     text.append(shared);
   }
+  // Included on the strength of session-looking cookies alone. Saying so is what makes
+  // including it honest: the row is worth a glance during a breach, and worth skipping if
+  // the account was never yours.
+  if (step.unverified) {
+    const note = document.createElement('p');
+    note.textContent = 'Not confirmed as your account — listed in case it is. Skip it if not.';
+    text.append(note);
+  }
+
   if (!step.passwordUrl) {
     const hint = document.createElement('p');
     hint.textContent = 'No direct link known — look under account or security settings once the site opens.';

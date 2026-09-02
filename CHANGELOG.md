@@ -1,5 +1,172 @@
 # Changelog
 
+## 0.28.0 — 2 September 2026
+
+### Signing in now confirms itself
+
+The transition test — a cookie that was not there before — only works if "before" was
+captured before the sign-in. Baselines were recorded when the popup opened, which misses
+the ordinary case entirely: someone arrives at a site and signs in within the same minute,
+long before anything scans, so the auth cookie is already present when the baseline is
+written and the site can never be more than a question.
+
+A domain is now baselined **when one of its pages finishes loading** — which happens when
+the user reaches the login form, necessarily before they submit it. From then on the
+sign-in is a new name in the jar and confirms itself with nothing to answer.
+
+This is not a browsing record. Only domains that already hold cookies are recorded, and
+only the names of their session-looking ones — every one of those facts already readable
+from `chrome.cookies.getAll` at any moment. A domain with no cookies is skipped precisely
+so that visiting a site never becomes something this extension stores. A test pins it.
+
+### Most-used sites first, offered where it is visible
+
+Ordering by the sites you actually use needs an optional permission, and its control lived
+in Settings, where a preference nobody finds is a preference nobody has. The popup now
+offers it in one line, once, when the list is long enough for ordering to matter.
+Dismissing it is remembered.
+
+Frequency orders and never confirms. A site visited daily is not thereby an account, and a
+bank visited twice a year does not sink below a news site.
+
+### Recovery is no longer empty when it matters most
+
+Restricting the breach walkthrough to confirmed accounts left it with **zero steps** on a
+fresh profile — telling someone who may have just been hacked to "browse a little and come
+back".
+
+The costs run opposite to the popup. A wrong row there is a false claim; a wrong row in
+recovery is a password page you glance at and skip, while a *missing* row is a compromised
+account that never comes up. Recovery now includes unsettled candidates, ranked below
+confirmed accounts within each tier and labelled "Not confirmed as your account — listed in
+case it is." Sensitivity still outranks confirmation: an unverified critical account sits
+above a confirmed high-risk one.
+
+### The Incognito experiment said the wrong thing when it failed
+
+Incognito access is off by default, and while it is off Chrome hides private windows from
+the extension entirely. So the probe reported "open one fresh blank Incognito window", the
+user opened one, and got the identical message forever, with nothing pointing at the
+checkbox that actually governs it. It now names `chrome://extensions` and the setting.
+
+### Also
+
+- 156 tests (up from 152).
+- `dev/popup-preview.html` had drifted from the page it previews, again. Resynced.
+
+## 0.27.5 — 2 September 2026
+
+### Unknown sites stay out without making the user reject them
+
+The Bloomberg result is now pinned as a domain-agnostic invariant rather than a one-site
+exception. Any unresolved auth-looking cookie—on Bloomberg or an arbitrary future domain—
+stays out of Confirmed accounts and recovery even when the site is open and highly ranked by
+Chrome's top-sites list.
+
+Pre-install candidates are now presented as **Add pre-existing accounts**. The user only
+adds accounts they recognise; every ignored candidate remains safely excluded. **Not mine**
+is optional queue cleanup, not work required to make the main list accurate.
+
+## 0.27.4 — 2 September 2026
+
+### The private result proves ambiguity, not logout
+
+The first live private-store measurement worked in Chrome 152:
+
+```
+Domain: bloomberg.com
+Normal auth-grade names: _session_id_backup
+Also seen anonymously: _session_id_backup
+Unexplained remainder: (none)
+```
+
+The experiment initially called that **SUCCESS** and said Bloomberg could be filtered
+without asking. That conclusion was one step too strong. The result proves that the cookie
+*name* `_session_id_backup` is issued to anonymous visitors and therefore cannot confirm an
+account. It does not prove that the normal-profile cookie with the same name is anonymous:
+a site may upgrade the same opaque session ID on the server when a user signs in.
+
+Automatically treating equal name sets as logged out would trade false positives for false
+negatives, hiding a real Bloomberg account from a signed-in user. The probe now reports
+**AMBIGUOUS BY NAME**, saves no baseline or verdict, and does not change the list. Its value
+is diagnostic evidence for why cookie metadata cannot answer the account question.
+
+The production result remains the honest fallback shipped in 0.27.2: only first-sight
+changes or the user's explicit Yes confirm an account; unresolved pre-install sites stay
+behind **Review possible accounts**. Visit frequency can order confirmed accounts but never
+promote an unresolved one. Wipe scope remains broad and unchanged.
+
+The popup heading now says **Confirmed accounts**, not **Signed in**. A remembered “Yours?
+Yes” establishes account ownership, while no browser API can guarantee the current
+server-side state behind a pre-existing opaque cookie.
+
+- 150 tests pass. The attempted cached-baseline integration and its unsafe dismissal API
+  were removed before release.
+
+## 0.27.3 — 2 September 2026
+
+### The Incognito lead is now measurable
+
+Chrome 152 has been measured exposing two cookie stores to the installed extension when
+**Allow in Incognito** is enabled and a private window is open. That proves the separate
+memory-only jar is reachable, but not yet that loading a real site there produces a useful
+anonymous baseline.
+
+Diagnostics now has a deliberately manual, one-domain private-store experiment for that
+second measurement. It:
+
+- refuses to run unless the Incognito store has no cookies and every private tab is blank;
+- creates one inactive tab in the already-open private window and proves a real document
+  loaded rather than trusting Chrome's `complete` status on an error page;
+- reports cookie names and counts only, never values;
+- closes only the tab it created and asks the user to close Incognito afterwards, which
+  erases the temporary in-memory site data; and
+- compares the normal and anonymous auth-grade names without changing the account list or
+  saving a verdict.
+
+The first target is Bloomberg. Equal names measure that the name is ambiguous; they do not
+settle whether a normal session with that name was upgraded by authentication. Version
+0.27.4 corrects the original overconfident result wording.
+
+- 151 tests (up from 145), including opaque cookie-store IDs, refusal of used/private web
+  sessions, tab cleanup, input validation, and proof that cookie values cannot escape the
+  probe result.
+
+## 0.27.2 — 2 September 2026
+
+### Visit frequency can no longer promote a possible account
+
+The recovery workflow bypassed the account-verdict pipeline. It fed every site that passed
+the generous cookie candidate test into a page that called them accounts, then `topSites`
+put frequently visited false positives first. In the popup, frequency context and account
+evidence were also added into one score, so an unanswered Bloomberg or eBay row could rank
+ahead of a confirmed account in the same tier.
+
+There are now four display buckets with hard boundaries:
+
+- **Confirmed accounts** — first-sight evidence or the user's explicit Yes.
+- **Configured exceptions** — visible so a Keep choice can be reversed, but not counted as
+  authentication evidence on its own.
+- **Possible accounts** — collapsed behind a review control and never counted as signed in.
+- **Cleanup-only sites** — still in the broad wipe scope, behind their own disclosure.
+
+Recovery consumes only the first bucket. `topSites` can order equally risky confirmed
+accounts and the review queue, but cannot move a domain between buckets. The wipe planner is
+unchanged and remains deliberately generous.
+
+Coverage history is no longer treated as proof of an account. A full cleanup acts on false
+positives too, so remembering that action made a heuristic mistake permanent under a new
+name.
+
+### There is no browser-wide signed-in list to request
+
+Chrome exposes cookie stores and cookie metadata, not the server-side identity attached to
+an opaque session identifier. A fresh incognito store could reduce the review queue by
+showing what some homepages give anonymous visitors, but it requires the user to enable
+incognito access, contacts every tested site, misses path-specific cookies such as eBay's
+`nonsession`, and cannot settle sites that reuse one opaque session cookie through login.
+It is therefore not used as proof.
+
 ## 0.27.1 — 2 September 2026
 
 ### First sight was being read as proof, and it is not

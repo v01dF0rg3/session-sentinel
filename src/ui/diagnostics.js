@@ -22,6 +22,7 @@ import { pageStep } from '../engine/step-runner.js';
 import { registrableDomain } from '../core/domain.js';
 import { formatLog } from '../platform/eventlog.js';
 import { METHOD_LABELS, describeCoverage } from '../core/coverage.js';
+import { authCookieNames, probeAnonymousCookies } from '../platform/incognito-probe.js';
 
 /** Newline, named so the escape survives every layer of tooling between here and disk. */
 const BREAK = String.fromCharCode(10);
@@ -382,6 +383,68 @@ el.copy.addEventListener('click', async () => {
   setTimeout(() => { el.copy.textContent = 'Copy report'; }, 1500);
 });
 
+// --- private-store anonymous baseline experiment ------------------------------------
+
+const baselineDomain = /** @type {HTMLInputElement} */ (document.getElementById('baseline-domain'));
+const baselineRun = /** @type {HTMLButtonElement} */ (document.getElementById('baseline-run'));
+const baselineResult = /** @type {HTMLElement} */ (document.getElementById('baseline-result'));
+
+baselineRun?.addEventListener('click', async () => {
+  baselineRun.disabled = true;
+  baselineResult.textContent = 'Loading one private page and reading cookie names...';
+
+  try {
+    const privateJar = await probeAnonymousCookies(baselineDomain.value);
+    const normalCookies = await chrome.cookies.getAll({ domain: privateJar.domain });
+    const normal = authCookieNames(normalCookies);
+    const anonymous = new Set(privateJar.authNames);
+    const explained = normal.authNames.filter((name) => anonymous.has(name));
+    const remainder = normal.authNames.filter((name) => !anonymous.has(name));
+
+    let conclusion;
+    if (!normal.authNames.length) {
+      conclusion = 'INCONCLUSIVE: the normal profile has no auth-grade cookies for this domain.';
+    } else if (!remainder.length) {
+      conclusion =
+        'AMBIGUOUS BY NAME: every auth-looking cookie name in the normal profile also appeared for an anonymous visitor. ' +
+        'Those names cannot prove an account, but the site may reuse the same name after sign-in, so this result cannot safely answer for you.';
+    } else {
+      conclusion =
+        `INCONCLUSIVE: ${remainder.length} normal cookie name${remainder.length === 1 ? '' : 's'} did not appear ` +
+        'on the private homepage. That may be an account cookie, or merely an anonymous cookie set on another route.';
+    }
+
+    baselineResult.textContent = [
+      conclusion,
+      '',
+      `Domain: ${privateJar.domain}`,
+      `Private cookies set: ${privateJar.siteCookieCount} for this site, ${privateJar.totalCookieCount} total`,
+      `Normal auth-grade names: ${normal.authNames.join(', ') || '(none)'}`,
+      `Also seen anonymously: ${explained.join(', ') || '(none)'}`,
+      `Unexplained remainder: ${remainder.join(', ') || '(none)'}`,
+      '',
+      'No account verdict was saved and the account list was not changed.',
+      'Cookie values were never displayed, stored or transmitted. Close every Incognito window now to erase the private test data.'
+    ].join(BREAK);
+  } catch (error) {
+    baselineResult.textContent = `NOT RUN: ${error instanceof Error ? error.message : String(error)}`;
+  } finally {
+    baselineRun.disabled = false;
+  }
+});
+
+async function suggestProbeDomain() {
+  try {
+    const overview = await chrome.runtime.sendMessage({ type: 'getOverview' });
+    const next = overview?.relevance?.questions?.[0];
+    if (next) baselineDomain.value = next;
+  } catch {
+    // The manual field still works when the background worker is unavailable.
+  }
+}
+
+suggestProbeDomain();
+
 // --- why these sites are listed ------------------------------------------------------
 
 /** @type {{ domain: string, strong: string[], moderate: string[] }[]} */
@@ -396,8 +459,8 @@ async function loadSignIn() {
   if (!headline || !list) return;
 
   headline.textContent = signInRows.length
-    ? `${signInRows.length} site${signInRows.length === 1 ? '' : 's'} judged signed in.`
-    : 'No site looks signed in yet.';
+    ? `${signInRows.length} raw cookie candidate${signInRows.length === 1 ? '' : 's'} before account confirmation.`
+    : 'No auth-looking cookie candidates found.';
 
   list.replaceChildren();
   for (const row of signInRows) {
@@ -435,10 +498,9 @@ loadSignIn();
 /**
  * Say which method is deciding, and how far it can see.
  *
- * The honest version of a line that previously offered to test whether sites could be
- * asked directly. They cannot: Chrome strips `Set-Cookie` from the Headers object, and
- * `getSetCookie()` returns nothing even for a same-origin `basic` response, where nothing
- * is CORS-filtered. Reading it needs permission to observe all network traffic.
+ * Chrome strips `Set-Cookie` from fetch. An explicitly enabled, empty Incognito store can
+ * measure anonymous cookie names without observing general network traffic, but a site may
+ * reuse one name for both anonymous and authenticated server-side sessions.
  */
 function reportSignInMethod() {
   const line = document.getElementById('signin-method');
@@ -446,6 +508,6 @@ function reportSignInMethod() {
   line.textContent =
     'A session cookie alone is not evidence of an account — bloomberg.com hands anonymous ' +
     'visitors one that is httpOnly, Secure and opaque. So a cookie counts only if it ' +
-    'appeared after this extension first saw the site. Sites you were already signed into ' +
-    'before installing cannot be settled that way, so those rows ask you instead.';
+    'appeared after this extension first saw the site. A private comparison can expose an ' +
+    'ambiguous name, but cannot prove whether the normal session behind that name is signed in.';
 }
