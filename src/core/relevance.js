@@ -44,6 +44,7 @@
 /**
  * @typedef {object} RelevanceSignals
  * @property {Set<string>} [signedIn] Domains with real evidence of an account.
+ * @property {Set<string>} [unconfirmed] Session-bearing cookies, nothing checked yet.
  * @property {Set<string>} [open] Domains with a tab open right now.
  * @property {Set<string>} [frequent] Domains from chrome.topSites, when granted.
  * @property {Set<string>} [acted] Domains the extension has run on before.
@@ -62,7 +63,12 @@
  */
 const QUALIFYING = /** @type {const} */ ([
   ['signedIn', 'signed in here'],
-  ['acted', 'you have signed out of this before']
+  ['acted', 'you have signed out of this before'],
+  // Ranked last, and worded as the doubt it is. A site whose cookies look session-bearing
+  // but which nothing has checked yet is worth showing - hiding every unchecked site left
+  // the list holding one entry, which is its own kind of wrong - but it must not be
+  // claimed as an account. This is the row that disappears once the site is asked.
+  ['unconfirmed', 'cookies look like a sign-in, not confirmed yet']
 ]);
 
 /**

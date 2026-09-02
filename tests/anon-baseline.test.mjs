@@ -70,3 +70,54 @@ test('an empty probe result is not mistaken for a site that sets no cookies', ()
   assert.equal(failed.usable, false);
   assert.equal(judgeSignIn(['session_token'], failed), 'unknown');
 });
+
+test('a baseline recorded this instant rules out everything, so it must not be used yet', () => {
+  // The bug this caught, stated as an invariant. On a first scan the baseline is written
+  // from the very cookies being judged, so subtracting it leaves nothing and every site
+  // grades anonymous. Worse than a wrong answer: nothing is left marked unknown, so the
+  // probe that would settle it never runs. The list came back holding one entry.
+  const jar = ['user_session', '_gh_sess'];
+  assert.equal(judgeSignIn(jar, null, jar), 'anonymous', 'what the caller must not do');
+  assert.equal(judgeSignIn(jar, null, []), 'unknown', 'what a first sighting means');
+});
+
+// --- the first-sight record, against fake storage ------------------------------------
+
+function fakeStorage(initial = {}) {
+  const bag = { ...initial };
+  globalThis.chrome = {
+    storage: {
+      local: {
+        get: async (key) => ({ [key]: bag[key] }),
+        set: async (obj) => Object.assign(bag, obj)
+      }
+    }
+  };
+  return bag;
+}
+
+test('first sight names which domains are new, and never revises one', async () => {
+  fakeStorage();
+  const { recordFirstSight } = await import('../src/platform/anon-baseline.js');
+
+  const first = await recordFirstSight([{ domain: 'a.example', authNames: ['sid'] }]);
+  assert.deepEqual([...first.added], ['a.example'], 'new on the pass that records it');
+
+  // A later scan, after the user signs in and a second cookie appears.
+  const second = await recordFirstSight([
+    { domain: 'a.example', authNames: ['sid', 'auth_token'] },
+    { domain: 'b.example', authNames: ['sid'] }
+  ]);
+
+  assert.deepEqual([...second.added], ['b.example'], 'a.example is no longer new');
+  assert.deepEqual(
+    second.sight['a.example'],
+    ['sid'],
+    'the record describes the world before we were watching, so it is never overwritten'
+  );
+  assert.equal(
+    judgeSignIn(['sid', 'auth_token'], null, second.sight['a.example']),
+    'signedIn',
+    'the cookie that arrived after first sight is the sign-in'
+  );
+});

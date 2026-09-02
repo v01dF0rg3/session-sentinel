@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.26.1 — 1 September 2026
+
+### The list came back holding one entry
+
+0.26.0 shipped with a bug that made it strictly worse than the problem it fixed: the popup
+showed a single site, and that one only because it was on the never-clear list. Nothing was
+judged signed in at all.
+
+On the first scan of a domain, its current session-looking cookies are recorded as a
+baseline — they predate anything the extension could have watched, so they prove nothing.
+The record was then used to judge the very same cookies, in the same pass, microseconds
+after being written from them. Every cookie was ruled out, every remainder was empty, and
+every site graded anonymous.
+
+Worse than a wrong answer: nothing was left marked `unknown` either, so the probe that asks
+sites what they give strangers — the entire point of the release — never ran once.
+
+A baseline is evidence from the scan *after* the one that captured it. `recordFirstSight`
+now reports which domains were new, and those are judged as `unknown` rather than against
+themselves. Two tests pin it, including the exact shape of the mistake.
+
+### Unchecked sites are shown, and worded as the doubt they are
+
+Hiding every site nothing had checked yet is what left the list with one entry. They are
+shown again, ranked below confirmed accounts and labelled **"cookies look like a sign-in,
+not confirmed yet"** — never as "you are signed in here", which is the claim that started
+all of this. A row worded that way disappears once the site has been asked.
+
+### Also
+
+- 140 tests (up from 138).
+
 ## 0.26.0 — 1 September 2026
 
 ### A session cookie is not evidence of an account

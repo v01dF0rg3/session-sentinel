@@ -486,21 +486,32 @@ async function relevanceSignals(settings, sessions) {
   // while handing `_session_id_backup` to strangers, so each candidate is checked against
   // what the site gives someone with no account.
   const candidates = sessions.filter((session) => session.signedIn);
-  const firstSight = await recordFirstSight(candidates);
+  const { sight, added } = await recordFirstSight(candidates);
   const baselines = await knownBaselines();
 
   /** @type {Set<string>} */
   const signedIn = new Set();
+  /** @type {Set<string>} */
+  const unconfirmed = new Set();
   /** @type {string[]} */
   const unresolved = [];
 
   for (const site of candidates) {
-    const verdict = judgeSignIn(site.authNames, baselines[site.domain] ?? null, firstSight[site.domain]);
+    // A domain seen for the first time on THIS pass has a baseline that was written
+    // microseconds ago from the very cookies being judged. Using it would rule out
+    // everything, grade every site anonymous, and leave nothing marked unknown - so the
+    // probe that settles it would never run. It is evidence from the next scan onwards.
+    const everSeen = added.has(site.domain) ? [] : sight[site.domain];
+    const verdict = judgeSignIn(site.authNames, baselines[site.domain] ?? null, everSeen);
+
     if (verdict === 'signedIn') signedIn.add(site.domain);
-    else if (verdict === 'unknown') unresolved.push(site.domain);
+    else if (verdict === 'unknown') {
+      unresolved.push(site.domain);
+      unconfirmed.add(site.domain);
+    }
   }
 
-  return { signedIn, open, frequent, acted, unresolved };
+  return { signedIn, unconfirmed, open, frequent, acted, unresolved };
 }
 
 /** Keep Chrome's idle threshold in step with the configured timeout. */

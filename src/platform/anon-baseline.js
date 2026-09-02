@@ -113,26 +113,33 @@ export async function knownBaselines() {
  * Record what each domain already had, the first time it is seen. Never overwritten: the
  * whole value is that it describes the world before we were watching.
  *
- * @param {{ domain: string, authGradeNames: string[] }[]} sites
- * @returns {Promise<Record<string, string[]>>} The full record, after any additions.
+ * Which domains were new matters as much as the record itself. Judging a domain against a
+ * baseline recorded microseconds earlier in the same pass rules out every cookie it has,
+ * so every site grades anonymous, nothing is shown, and — worse — nothing is left marked
+ * unknown, so the probe that would have settled it never runs. A baseline is only evidence
+ * on the scans *after* the one that captured it.
+ *
+ * @param {{ domain: string, authNames: string[] }[]} sites
+ * @returns {Promise<{ sight: Record<string, string[]>, added: Set<string> }>}
  */
 export async function recordFirstSight(sites) {
   try {
     const stored = await chrome.storage.local.get(SIGHT_KEY);
     /** @type {Record<string, string[]>} */
     const sight = stored[SIGHT_KEY] ?? {};
-    let dirty = false;
+    /** @type {Set<string>} */
+    const added = new Set();
 
     for (const site of sites) {
       if (sight[site.domain] !== undefined) continue;
-      sight[site.domain] = site.authGradeNames;
-      dirty = true;
+      sight[site.domain] = site.authNames;
+      added.add(site.domain);
     }
 
-    if (dirty) await chrome.storage.local.set({ [SIGHT_KEY]: sight });
-    return sight;
+    if (added.size) await chrome.storage.local.set({ [SIGHT_KEY]: sight });
+    return { sight, added };
   } catch {
-    return {};
+    return { sight: {}, added: new Set() };
   }
 }
 

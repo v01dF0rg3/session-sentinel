@@ -263,7 +263,15 @@ function buildSiteRow(site) {
   const name = document.createElement('span');
   name.className = 'site-name';
   name.textContent = site.domain;
-  if (site.reasons?.length) name.title = `Shown because it is ${site.reasons[0]}.`;
+  // The strongest reason leads. "not confirmed yet" is deliberately not phrased as a
+  // claim: saying "you are signed in here" about a site the user has no account on is the
+  // complaint this whole mechanism exists to answer.
+  if (site.reasons?.length) {
+    const [reason] = site.reasons;
+    name.title = reason.startsWith('cookies')
+      ? `Shown because its ${reason}.`
+      : `Shown because you are ${reason}.`;
+  }
 
   const actions = document.createElement('span');
   actions.className = 'site-actions';

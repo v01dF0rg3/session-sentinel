@@ -121,7 +121,7 @@
       otherCount: sites.length - usedDomains.length,
       narrowed: sites.length - usedDomains.length >= 3,
       canRankByFrequency: settings.useVisitFrequency,
-      unresolved: []
+      unresolved: ['bloomberg.com']
     },
     recipeStatus: { total: 3, source: 'built-in', bundleVersion: null, fetchedAt: null },
     crashTrail: crashTrail.value
