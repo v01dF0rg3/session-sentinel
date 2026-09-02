@@ -89,14 +89,27 @@ Work through these in order. Each one exercises a layer that no automated test r
 - [ ] Result says **revoked**, not just cleared — check the popup status line
 - [ ] On a site with no recipe, the result honestly says *cleared locally*
 
-### D. Keep-site guarantee
+### D. Confirmed-only bulk scope
+
+- [ ] Leave at least one domain in **Log in to pre-existing accounts** unresolved
+- [ ] Press **Log out of confirmed accounts**
+- [ ] The result names only confirmed accounts; the unanswered candidate is untouched
+
+### E. Candidate login flow
+
+- [ ] Press **Login** on a candidate where you are already signed in
+- [ ] The site opens and moves into **Confirmed accounts** when its account UI is detected
+- [ ] Press **Login** on a logged-out candidate and complete the site's login
+- [ ] Reopen the popup; the site is now under **Confirmed accounts**
+
+### F. Keep-site guarantee
 
 - [ ] Tick **Never clear this site** on one site
-- [ ] Press **Log out of all sessions**
-- [ ] That site is still signed in; the others are not
+- [ ] Press **Log out of confirmed accounts**
+- [ ] That site is still signed in; the other confirmed, non-kept accounts are not
 - [ ] The status line mentions the kept site was skipped
 
-### E. Triggers
+### G. Triggers
 
 - [ ] Set inactivity to 1 minute in settings, leave the machine alone, confirm it fires
 - [ ] Lock the screen → unlock → high-risk sites are signed out
@@ -104,9 +117,9 @@ Work through these in order. Each one exercises a layer that no automated test r
 - [ ] Restored tabs on cleared sites reload themselves rather than showing a stale
       signed-in page
 
-### F. Failure behaviour
+### H. Failure behaviour
 
-- [ ] Turn off networking and press **Log out of all sessions** — it should report
+- [ ] Turn off networking and press **Log out of confirmed accounts** — it should report
       failures honestly, not claim success
 - [ ] Check the service worker console (`chrome://extensions` → *service worker*) for
       unhandled errors after each of the above

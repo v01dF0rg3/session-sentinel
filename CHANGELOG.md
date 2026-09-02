@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.33.0 — 2 September 2026
+
+### Candidates now lead to a real login instead of being manually added
+
+**Add pre-existing accounts** is now **Log in to pre-existing accounts**, and each row's
+**Add** action is now **Login**. It opens the site's own origin, confirms immediately when
+the page already exposes signed-in account UI, or activates the site's visible Login
+control. `/login` is used only when the homepage exposes no login route.
+
+The login intent is tied to that tab in memory-only session storage for 30 minutes. This
+survives an MV3 worker restart while the user enters credentials. Full navigations, OAuth
+returns, single-page URL changes, and cookie changes all wake the existing page evidence
+check; only positive evidence moves the site into Confirmed accounts. Merely clicking Login
+never confirms it.
+
+- 182 tests (up from 177).
+
+## 0.32.1 — 2 September 2026
+
+### The account button acts on confirmed logins only
+
+**Log out of confirmed accounts** now stops after the confirmed set. Unresolved and
+cleanup-only cookie candidates are not attempted afterwards, and identity expansion cannot
+pull an unconfirmed sibling back into the run. Risk still determines order among the
+confirmed targets.
+
+Scheduled safety wipes remain deliberately generous, while explicit per-site **Log out**
+and **Clear data** actions remain available for anything else.
+
 ## 0.32.0 — 2 September 2026
 
 ### Apps that build their account menu on demand are now recognised

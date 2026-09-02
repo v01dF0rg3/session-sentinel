@@ -35,9 +35,9 @@ test('clearing youtube also clears google when the user is signed into both', ()
   assert.ok(!domains.includes('chase.com'), 'unrelated sites are untouched');
 });
 
-test('expansion only reaches sites the user is actually signed into', () => {
-  // Otherwise a one-site logout would list a pile of Google properties the user has
-  // never used, and look far more sweeping than it is.
+test('identity expansion cannot escape the eligible scope', () => {
+  // The confirmed-only bulk action supplies only confirmed domains as eligible. An
+  // unconfirmed identity sibling must not be pulled back into that run.
   const { domains, added } = expandForIdentity(['youtube.com'], ['youtube.com']);
   assert.deepEqual(domains, ['youtube.com']);
   assert.deepEqual(added, []);

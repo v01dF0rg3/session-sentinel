@@ -4,7 +4,7 @@ Design rationale for Session Sentinel, and the constraints that produced it.
 
 ## The problem
 
-"Log out of all sessions" is three operations wearing one name:
+A logout can produce three materially different results:
 
 | | What it does | Feasibility |
 |---|---|---|

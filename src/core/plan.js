@@ -132,9 +132,9 @@ export function buildPlan(domains, trigger, settings) {
       // the session is not ended, only abandoned - still live, still listed, no longer
       // visible to the user.
       //
-      // "Log out of all sessions" keeps the threshold, and must. A profile with a couple
-      // of hundred signed-in sites would otherwise spend ten seconds each opening tabs,
-      // which is half an hour of the browser doing something the user cannot interrupt.
+      // The confirmed-account bulk action keeps the threshold. Even a real account list
+      // can be long, and ten seconds of background navigation per low-risk site would turn
+      // one click into minutes of work the user cannot interrupt.
       serverLogout:
         settings.serverLogout.enabled &&
         (trigger === 'manualSite' || atLeast(tier, settings.serverLogout.minTier))

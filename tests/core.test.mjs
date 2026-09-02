@@ -79,7 +79,7 @@ test('manual run reaches every tier', () => {
   assert.equal(plan.targets.length, 3);
 });
 
-test('ignored sites survive automatic triggers and manual "log out everywhere"', () => {
+test('ignored sites survive automatic triggers and the confirmed-account bulk action', () => {
   const settings = withDefaults({ onboarded: true, sites: { 'chase.com': { mode: 'ignored' } } });
 
   for (const trigger of ['browserClose', 'idle', 'lock', 'manual']) {
@@ -94,7 +94,7 @@ test('ignored sites survive automatic triggers and manual "log out everywhere"',
 
 test('a site marked "never clear" is never cleared, whatever fires', () => {
   // The user ticks "Never clear this site" on youtube.com. Nothing automatic, and no
-  // press of "Log out of all sessions", may touch it - including when it is swept up in
+  // press of "Log out of confirmed accounts", may touch it - including when it is swept up in
   // a run alongside sites that DO get cleared.
   const settings = withDefaults({ onboarded: true, sites: { 'youtube.com': { mode: 'ignored' } } });
   const alongside = ['chase.com', 'youtube.com', 'github.com'];

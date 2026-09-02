@@ -36,8 +36,8 @@ test('being open in a tab does not put a site on the list', () => {
 });
 
 test('having tried to clear a site before is not account evidence', () => {
-  // A full run acts on every plausible session-bearing site, including Bloomberg and eBay
-  // false positives. Treating the action as proof would cache the original guess forever.
+  // A broad scheduled wipe may act on plausible session-bearing sites, including
+  // Bloomberg and eBay false positives. The action cannot become account proof.
   assert.deepEqual(reasonsToShow(site('bloomberg.com', 'low'), {
     acted: new Set(['bloomberg.com'])
   }), []);
@@ -157,7 +157,7 @@ test('within a tier, usage context orders confirmed accounts', () => {
   assert.ok(compareSites(strong, tied) > 0, 'a-barely-used sorts before a-lived-in');
 });
 
-test('recovery receives confirmed accounts only', () => {
+test('the manual account selector excludes every unconfirmed candidate', () => {
   const sites = [site('github.com'), site('bloomberg.com'), site('ebay.com')];
   const signals = {
     signedIn: new Set(['github.com']),

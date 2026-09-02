@@ -1,9 +1,9 @@
 /**
  * What a site's own pages said about whether the user is signed in.
  *
- * Kept apart from the user's explicit answer in site-verdict.js, and always outranked by
- * it. This is an observation the extension made; that is a statement the user made, and
- * when they disagree the person wins.
+ * Kept apart from persistent overrides in site-verdict.js, and always outranked by them.
+ * This is an observation the extension made; an override is a statement the user made,
+ * and when they disagree the person wins.
  *
  * A later observation replaces an earlier one, because the answer genuinely changes: a
  * site read as anonymous before signing in should not stay that way afterwards. That is
@@ -39,7 +39,7 @@ export async function recordPageVerdict(domain, verdict) {
 
     await chrome.storage.local.set({ [KEY]: all });
   } catch {
-    // An observation lost is a question the user answers by hand instead.
+    // An observation lost leaves the site as a candidate for the Login verification flow.
   }
 }
 

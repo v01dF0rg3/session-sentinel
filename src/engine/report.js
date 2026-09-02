@@ -2,9 +2,9 @@
  * The result model.
  *
  * The single most important thing this extension does is tell the truth about what it
- * achieved. "Log out of all sessions" means three different things depending on the
- * site, and a tool that paints everything green when it only deleted local cookies is
- * actively dangerous - the user stops worrying about a session that is still live.
+ * achieved. "Log out of confirmed accounts" can produce three different results depending
+ * on the site, and a tool that paints everything green when it only deleted local cookies
+ * is actively dangerous - the user stops worrying about a session that is still live.
  *
  *   'revoked'  green  - the site confirmed sessions were killed on other devices too
  *   'loggedOut' amber - this browser's session was ended server-side, others unknown

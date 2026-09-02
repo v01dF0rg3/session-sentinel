@@ -25,10 +25,11 @@ So two questions are kept apart, deliberately:
   sign in.
 
   Sites you were already signed into before installing cannot be separated that way, and no
-  rule over cookie names can do it either. Those rows sit behind **Add pre-existing
-  accounts**. Add only the accounts you recognise; every unanswered site stays out, so you
-  do not have to reject dozens of anonymous-cookie sites. **Not mine** is available only if
-  you want to tidy that optional queue.
+  rule over cookie names can do it either. Those rows sit behind **Log in to pre-existing
+  accounts**. **Login** opens the site and activates its own sign-in route. If the site
+  already shows an authenticated account—or after the login completes—it moves into
+  Confirmed accounts automatically. Every unresolved site stays out. **Not mine** remains
+  optional queue cleanup.
 
 Being open in a tab, or high in your top sites, orders confirmed accounts but never joins
 that set — a sign-in page is maximum evidence of attention and zero evidence of an account.
@@ -40,9 +41,9 @@ listed** names the exact cookie that caused it.
 
 Unanswered candidates and cleanup-only sites have separate disclosures. A site explicitly
 marked Keep remains visible in its own section so that choice can be reversed, but Keep is
-not treated as proof of authentication. This is a display split, not a change of scope: the
-total stays on screen, the filter still searches all of it, and "Log out of all sessions"
-still clears all of it.
+not treated as proof of authentication. The total stays on screen and the filter still
+searches all of it, but **Log out of confirmed accounts** acts only on the confirmed set.
+Scheduled safety wipes retain their deliberately generous cookie-candidate scope.
 
 There is no Bloomberg rule or domain deny-list in this decision. The same invariant applies
 to every domain: an anonymous-looking or otherwise unresolved cookie candidate cannot enter
@@ -115,8 +116,8 @@ about withholding the feature.
 
 ## What it actually does
 
-"Log out of all sessions" means three different things, and the extension distinguishes
-them in every report rather than painting everything green:
+"Log out of confirmed accounts" can produce three different results, and the extension
+distinguishes them in every report rather than painting everything green:
 
 | Result | Meaning |
 |---|---|
@@ -253,8 +254,8 @@ so, because that site will sign the others back in.
 
 Some sites you never want logged out — YouTube, a music player, a home dashboard. Tick
 **Never clear this site** in the popup (it sits right under the current site's name) and
-that site is skipped by every automatic trigger *and* by **Log out of all sessions**. The
-big button deliberately does not override it.
+that site is skipped by every automatic trigger *and* by **Log out of confirmed accounts**.
+The big button deliberately does not override it.
 
 Each row in the signed-in list has the same control as a **Keep** checkbox, and the options
 page exposes it as the *never clear* handling mode. Kept sites are counted in the popup so

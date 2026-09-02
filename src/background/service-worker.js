@@ -18,7 +18,7 @@ import { ensureInitialized, getSettings, getState, migrateSettings, setSiteOverr
 import { discoverSessions, explainSignedIn, likelyLoggedIn } from '../platform/sessions.js';
 import { isRunInProgress, runLocalWipe, runLogout } from '../engine/run.js';
 import { resolveTier } from '../core/plan.js';
-import { registrableDomain, hostnameFromUrl } from '../core/domain.js';
+import { domainToOrigin, registrableDomain, hostnameFromUrl } from '../core/domain.js';
 import { getActiveRecipes, getStoredBundle, refreshBundle, resetToBuiltin } from '../platform/recipe-store.js';
 import { clearTrail, readTrail } from '../platform/breadcrumb.js';
 import { clearLog, logEvent, readLog } from '../platform/eventlog.js';
@@ -34,7 +34,16 @@ import { observedLogins, recordLoginEvent } from '../platform/login-events.js';
 import { signInCompletedFor } from '../core/oauth-return.js';
 import { readPageEvidence } from '../core/page-signals.js';
 import { collectPageEvidence } from '../engine/page-probe.js';
+import { activateLoginControl } from '../engine/login-entry.js';
 import { getPageVerdicts, recordPageVerdict } from '../platform/page-verdict.js';
+import {
+  clearLoginIntent,
+  getLoginIntent,
+  loginIntentTabIds,
+  loginIntentTabsForDomain,
+  markLoginEntryAttempted,
+  rememberLoginIntent
+} from '../platform/login-intent.js';
 import { sessionEvidence } from '../core/risk.js';
 import { getVerdicts, setVerdict } from '../platform/site-verdict.js';
 import { judgeSignIn } from '../core/anon-baseline.js';
@@ -209,7 +218,7 @@ async function handleMessage(message) {
       return getOverview();
 
     case 'runNow':
-      return runLogout('manual');
+      return runConfirmedOnly();
 
     case 'runSite':
       return runLogout('manualSite', [message.domain]);
@@ -239,8 +248,8 @@ async function handleMessage(message) {
       const signals = await relevanceSignals(settings, sessions);
       // Recovery calls these rows accounts and may send the user to password/security
       // pages. Auth-looking cookies, open tabs and topSites are not enough for that claim.
-      // They remain review questions in the popup until first-sight evidence or the user's
-      // answer confirms them.
+      // They remain login candidates in the popup until first-sight or live page evidence
+      // confirms them.
       // Confirmed accounts, plus the candidates nothing has settled. The popup is strict
       // because a false positive there is a false claim; recovery is inclusive because the
       // costs are reversed. A wrong row here is a password page the user glances at and
@@ -304,6 +313,9 @@ async function handleMessage(message) {
       await setVerdict(message.domain, message.verdict ?? null);
       return { ok: true };
 
+    case 'openLogin':
+      return openCandidateLogin(message.domain);
+
     case 'getEventLog':
       return readLog();
 
@@ -330,10 +342,57 @@ async function handleMessage(message) {
 }
 
 /**
+ * Run the button-driven bulk logout over confirmed logins only.
+ *
+ * Scheduled wipes remain deliberately generous, and a user can still target any site
+ * explicitly. The account button is narrower because it claims to act on accounts.
+ */
+async function runConfirmedOnly() {
+  const settings = await getSettings();
+  const sessions = likelyLoggedIn(await discoverSessions());
+  const signals = await relevanceSignals(settings, sessions);
+  const confirmed = confirmedAccountDomains(sessions, signals);
+  return runLogout('manual', confirmed);
+}
+
+/**
+ * Start an explicit login-or-confirm flow for one unanswered candidate.
+ *
+ * The first page is the site's own origin. If it already shows account UI, that confirms
+ * the login. Otherwise the page's own Login control is activated; `/login` is used only
+ * when the homepage exposes no such control.
+ *
+ * @param {string} requestedDomain
+ */
+async function openCandidateLogin(requestedDomain) {
+  const domain = registrableDomain(String(requestedDomain ?? '').trim().toLowerCase());
+  const sessions = likelyLoggedIn(await discoverSessions());
+  if (!domain || !sessions.some((session) => session.domain === domain)) {
+    throw new Error('this site is no longer an account candidate');
+  }
+
+  // Capture "before" before the user can submit a password in the new tab.
+  await baselineOnVisit(domain);
+
+  const tab = await chrome.tabs.create({ url: `${domainToOrigin(domain)}/`, active: true });
+  if (!tab.id) throw new Error('Chrome did not return the login tab');
+
+  await rememberLoginIntent(tab.id, domain);
+  // Covers an instantly restored/cached page; the normal tab events cover ordinary loads.
+  void advancePendingLogin(tab.id);
+  return { ok: true, tabId: tab.id };
+}
+
+/**
  * Everything the popup needs, in one round trip.
  * @returns {Promise<{ settings: import('../core/policy.js').Settings, currentDomain: string | null, sites: Array<{ domain: string, tier: string, tierReason: string, mode: string, cookieCount: number }>, lastReport: import('../engine/report.js').RunReport | null }>}
  */
 async function getOverview() {
+  // A login completed entirely inside a single-page app may change neither the URL nor a
+  // cookie. Reopening the popup is a natural, bounded final check of every Login action
+  // still awaiting confirmation.
+  await refreshPendingLogins();
+
   const settings = await getSettings();
   const state = await getState();
   const sessions = likelyLoggedIn(await discoverSessions());
@@ -353,8 +412,8 @@ async function getOverview() {
   const host = activeTab?.url ? hostnameFromUrl(activeTab.url) : null;
 
   // A profile carries hundreds of cookied domains and a dozen the user would recognise.
-  // Split them so the recognisable ones are what gets seen; the run is unaffected, and
-  // the popup still states the true total next to the button that acts on it.
+  // Split them so confirmed accounts are what gets seen first. The account button uses
+  // that same confirmed set; scheduled safety wipes retain the broader candidate scope.
   const signals = await relevanceSignals(settings, sessions);
   const { used, configured, questions, other, narrowed } = partitionSites(discovered, signals);
   const sites = [...used, ...configured, ...questions, ...other];
@@ -495,9 +554,8 @@ async function relevanceSignals(settings, sessions) {
   const unconfirmed = new Set();
 
   for (const site of candidates) {
-    // The user's own answer settles it and is never re-litigated. Four rules in a row got
-    // this wrong from cookies alone; "I have never made an eBay account" is not a
-    // heuristic anyone can improve on.
+    // Persistent user overrides settle it and are never re-litigated. "notMine" remains
+    // the current dismissal; "mine" is a legacy value retained for existing installations.
     const stated = verdicts[site.domain];
     if (stated === 'notMine') continue;
     if (stated === 'mine') {
@@ -510,8 +568,8 @@ async function relevanceSignals(settings, sessions) {
     const everSeen = added.has(site.domain) ? null : sight[site.domain] ?? null;
 
     // First sight can promote but never dismiss - it may well contain the user's own auth
-    // cookie, if they were signed in before installing. Anything it cannot promote is a
-    // question, not a no.
+    // cookie, if they were signed in before installing. Anything it cannot promote remains
+    // a login candidate, not a no.
     // A sign-in watched happening counts, but only while the site still holds cookies to
     // match - which the candidate filter above already guarantees. That is the difference
     // from the cache this project removed: the record can promote a site, never keep one
@@ -524,9 +582,9 @@ async function relevanceSignals(settings, sessions) {
     ) {
       signedIn.add(site.domain);
     } else if (said === 'anonymous') {
-      // The site offered to sign them in and nowhere offered to sign them out. That is the
-      // only thing short of the user's own word that may remove a question rather than
-      // answer it, and it is what finally settles sites like bloomberg.com.
+      // The site offered to sign them in and nowhere offered to sign them out. That is
+      // direct negative page evidence, and it is what finally settles sites like
+      // bloomberg.com without asking the user to classify a cookie.
       continue;
     } else unconfirmed.add(site.domain);
   }
@@ -537,12 +595,22 @@ async function relevanceSignals(settings, sessions) {
 /**
  * The last top-level URL seen in each tab, so a return trip from an identity provider is
  * recognisable. In memory only: MV3 kills the worker after ~30s idle, and losing this
- * costs at most one undetected sign-in, which the user can still answer by hand.
+ * costs at most one undetected sign-in outside the tab-specific Login flow, whose intent
+ * is persisted separately in session storage.
  * @type {Map<number, string>}
  */
 const lastUrlByTab = new Map();
+const loginRetryTimers = new Map();
+const loginUnknownChecks = new Map();
 
-chrome.tabs.onRemoved.addListener((tabId) => lastUrlByTab.delete(tabId));
+chrome.tabs.onRemoved.addListener((tabId) => {
+  lastUrlByTab.delete(tabId);
+  const retry = loginRetryTimers.get(tabId);
+  if (retry) clearTimeout(retry);
+  loginRetryTimers.delete(tabId);
+  loginUnknownChecks.delete(tabId);
+  void clearLoginIntent(tabId);
+});
 
 /**
  * Keep the frequency setting in step with the permission that backs it.
@@ -593,6 +661,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   // session to end, which settles the one case nothing else can reach: an account that
   // predates the extension, visited without ever signing out and back in.
   void askPageIfSignedIn(tabId, domain);
+  void advancePendingLogin(tabId);
 });
 
 // A single-page app changes its URL without reloading, and often builds the account menu
@@ -600,8 +669,131 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (!changeInfo.url || !tab.url?.startsWith('https://')) return;
   const host = hostnameFromUrl(tab.url);
-  if (host) void askPageIfSignedIn(tabId, registrableDomain(host));
+  if (host) {
+    void askPageIfSignedIn(tabId, registrableDomain(host));
+    void advancePendingLogin(tabId);
+  }
 });
+
+// A modal or single-page login may not navigate at all. Cookie changes are the reliable
+// wake-up in that case; the short delay gives the page time to redraw its account menu.
+chrome.cookies.onChanged.addListener((changeInfo) => {
+  const domain = registrableDomain(changeInfo.cookie?.domain ?? '');
+  if (!domain) return;
+  void wakePendingLogins(domain);
+});
+
+/** @param {string} domain */
+async function wakePendingLogins(domain) {
+  for (const tabId of await loginIntentTabsForDomain(domain)) {
+    scheduleLoginRetry(tabId, 1500);
+  }
+}
+
+async function refreshPendingLogins() {
+  await Promise.all((await loginIntentTabIds()).map((tabId) => advancePendingLogin(tabId)));
+}
+
+/**
+ * @param {number} tabId
+ * @param {number} delayMs
+ */
+function scheduleLoginRetry(tabId, delayMs) {
+  const existing = loginRetryTimers.get(tabId);
+  if (existing) clearTimeout(existing);
+  loginRetryTimers.set(
+    tabId,
+    setTimeout(() => {
+      loginRetryTimers.delete(tabId);
+      void advancePendingLogin(tabId);
+    }, delayMs)
+  );
+}
+
+/** Tabs currently being inspected, preventing a load and cookie event from double-clicking. */
+const loginFlowInFlight = new Set();
+
+/**
+ * Continue a Login action once its tab reaches a useful page.
+ *
+ * Provider pages are left entirely to the user. On the target site we first look for
+ * positive signed-in evidence. Only while it remains unresolved do we activate the site's
+ * Login control or use the conventional `/login` fallback.
+ *
+ * @param {number} tabId
+ */
+async function advancePendingLogin(tabId) {
+  if (loginFlowInFlight.has(tabId)) return;
+  loginFlowInFlight.add(tabId);
+
+  try {
+    const intent = await getLoginIntent(tabId);
+    if (!intent) return;
+
+    const tab = await chrome.tabs.get(tabId);
+    if (tab.status !== 'complete' || !tab.url) return;
+    const host = hostnameFromUrl(tab.url);
+    if (!host || registrableDomain(host) !== intent.domain) return;
+
+    let evidence = null;
+    try {
+      const [frame] = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: collectPageEvidence
+      });
+      evidence = frame?.result ?? null;
+    } catch {
+      // The conventional path below is still useful when a page refuses inspection.
+    }
+
+    const pageVerdict = evidence ? readPageEvidence(evidence) : 'unknown';
+    if (pageVerdict === 'signedIn') {
+      await recordPageVerdict(intent.domain, 'signedIn');
+      await clearLoginIntent(tabId);
+      loginUnknownChecks.delete(tabId);
+      return;
+    }
+
+    // Once the login page or modal has been opened, later events only re-check. They must
+    // never keep clicking Login while the person is entering credentials.
+    if (intent.attemptedEntry) return;
+
+    // "complete" often precedes a single-page app's header. Give a page that says nothing
+    // one second look before deciding it needs the fallback. A page explicitly offering
+    // Sign in does not need the delay.
+    const unknownChecks = loginUnknownChecks.get(tabId) ?? 0;
+    if (pageVerdict === 'unknown' && unknownChecks < 1) {
+      loginUnknownChecks.set(tabId, unknownChecks + 1);
+      scheduleLoginRetry(tabId, 1800);
+      return;
+    }
+
+    await markLoginEntryAttempted(tabId);
+
+    try {
+      const [activated] = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: activateLoginControl
+      });
+      if (activated?.result?.activated) return;
+    } catch {
+      // Fall through to the conventional path.
+    }
+
+    const path = new URL(tab.url).pathname;
+    const alreadyAtLogin =
+      (evidence?.passwordFields ?? 0) > 0 ||
+      /\/(login|signin|sign-in|sign_in|log-in|log_in)(\/|$)/i.test(path);
+    if (!alreadyAtLogin) {
+      await chrome.tabs.update(tabId, { url: `${domainToOrigin(intent.domain)}/login` });
+    }
+  } catch {
+    // Closing the tab or navigating somewhere Chrome protects simply leaves the candidate
+    // unresolved. The intent expires on its own and no account is guessed.
+  } finally {
+    loginFlowInFlight.delete(tabId);
+  }
+}
 
 /**
  * Ask the page whether the user is signed in, for sites nothing else has settled.
@@ -662,7 +854,7 @@ async function askPageIfSignedIn(tabId, domain, attempt = 0) {
     }
   } catch {
     // A page that refuses injection - the Chrome Web Store, a PDF viewer, a tab closed
-    // mid-flight - simply stays a question for the user to answer.
+    // mid-flight - simply remains an unconfirmed candidate.
     probedThisSession.delete(domain);
   }
 }

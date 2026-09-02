@@ -74,27 +74,32 @@ function render() {
   renderCrashReport(crashTrail);
 
   el.enabledLabel.textContent = settings.enabled ? 'Active' : 'Paused';
-  el.logoutAll.disabled = !settings.enabled;
 
-  const critical = sites.filter((/** @type {any} */ s) => s.tier === 'critical').length;
-  const high = sites.filter((/** @type {any} */ s) => s.tier === 'high').length;
-  const kept = sites.filter((/** @type {any} */ s) => s.mode === 'ignored').length;
+  const confirmedDomains = new Set(overview.relevance?.confirmed ?? []);
+  const confirmedSites = sites.filter((/** @type {any} */ s) => confirmedDomains.has(s.domain));
+  const runnable = confirmedSites.filter((/** @type {any} */ s) => s.mode !== 'ignored');
+  const critical = runnable.filter((/** @type {any} */ s) => s.tier === 'critical').length;
+  const high = runnable.filter((/** @type {any} */ s) => s.tier === 'high').length;
+  const kept = confirmedSites.length - runnable.length;
   // "225 sites" under a heading reading SIGNED IN was the claim that started this: most of
   // those had set a cookie while the user read a page. The shown count leads because it is
-  // the honest one; the total stays visible because it is what a full run covers.
+  // the honest one; the total stays visible so anonymous-cookie candidates are not hidden.
   const shown = overview.relevance?.confirmed?.length ?? overview.relevance?.used?.length ?? sites.length;
+  el.logoutAll.disabled = !settings.enabled || runnable.length === 0;
   el.siteCount.textContent =
     shown === sites.length ? `${sites.length} confirmed` : `${shown} confirmed`;
   el.siteCount.title =
     shown === sites.length
       ? ''
-      : `${shown} confirmed accounts. ${overview.relevance?.questionCount ?? 0} possible pre-existing accounts stay out unless you add them. All ${sites.length} sites shown by cookie discovery remain covered by a full run.`;
+      : `${shown} confirmed accounts. ${overview.relevance?.questionCount ?? 0} possible pre-existing accounts stay out until a site verifies its login. Other cookied sites are not included in the account button.`;
   el.filter.hidden = sites.length < 8;
 
-  if (!sites.length) {
-    el.scopeHint.textContent = 'No signed-in sites detected.';
+  if (!runnable.length) {
+    el.scopeHint.textContent = kept
+      ? `No confirmed accounts will be logged out; ${kept} ${kept === 1 ? 'is' : 'are'} marked Keep.`
+      : 'No confirmed accounts to log out.';
   } else {
-    const scope = `Ends every session found in this browser, hardest first (${critical} critical, ${high} high risk).`;
+    const scope = `Ends ${runnable.length} confirmed account${runnable.length === 1 ? '' : 's'}, highest risk first (${critical} critical, ${high} high risk).`;
     el.scopeHint.textContent = kept
       ? `${scope} ${kept} kept site${kept === 1 ? '' : 's'} will be skipped.`
       : scope;
@@ -167,7 +172,7 @@ function renderSiteList(sites, relevance) {
   const other = sites.filter((s) => !usedSet.has(s.domain) && !configuredSet.has(s.domain) && !questionSet.has(s.domain));
 
   if (!used.length) {
-    el.siteList.append(emptyRow('No confirmed accounts yet. Add only accounts you recognise below.'));
+    el.siteList.append(emptyRow('No confirmed accounts yet. Use Login below to verify one.'));
   }
 
   for (const group of groupByTier(used)) {
@@ -235,7 +240,7 @@ function tierHeading(tier, count) {
  *
  * It states the count rather than saying "more", because the number is itself the honest
  * part: that a profile carries two hundred other cookied domains is information, and a
- * vague word would undersell what a full run actually covers.
+ * vague word would hide how much session-like state the browser is carrying.
  *
  * @param {number} count
  */
@@ -250,7 +255,7 @@ function otherDisclosureRow(count) {
     ? 'Hide other sites'
     : `Show ${count} other cookied site${count === 1 ? '' : 's'}`;
   button.title =
-    'Sites you have cookies for but no sign of using. A full run clears them either way.';
+    'Sites you have cookies for but no confirmed login. Scheduled safety wipes may still clear them.';
   button.addEventListener('click', () => {
     showOther = !showOther;
     render();
@@ -287,9 +292,9 @@ function questionDisclosureRow(count) {
   button.type = 'button';
   button.textContent = showQuestions
     ? 'Hide pre-existing account candidates'
-    : `Add pre-existing accounts (${count} candidate${count === 1 ? '' : 's'})`;
+    : `Log in to pre-existing accounts (${count} candidate${count === 1 ? '' : 's'})`;
   button.title =
-    'These sites have session-looking cookies, but Chrome cannot tell whether the session belongs to an account. They stay out unless you add them.';
+    'These sites have session-looking cookies, but Chrome cannot tell whether the session belongs to an account. Login opens the site so it can verify the session.';
   button.addEventListener('click', () => {
     showQuestions = !showQuestions;
     render();
@@ -303,7 +308,7 @@ function reviewInstructionRow() {
   const row = document.createElement('li');
   row.className = 'review-note';
   row.textContent =
-    'Add only accounts you recognise. Ignore the rest—they stay out of Confirmed accounts and recovery.';
+    'Login opens the site. If it already shows you signed in—or after you sign in—it moves to Confirmed accounts.';
   return row;
 }
 
@@ -324,7 +329,7 @@ function buildSiteRow(site) {
   // claim: saying "you are signed in here" about a site the user has no account on is the
   // complaint this whole mechanism exists to answer.
   if (site.needsConfirmation && site.mode !== 'ignored') {
-    name.title = 'Its cookies could belong to an account or to an anonymous visitor. Your answer settles which list it belongs in.';
+    name.title = 'Its cookies could belong to an account or an anonymous visitor. Login opens the site so the site itself can settle it.';
   } else if (site.reasons?.length) {
     const [reason] = site.reasons;
     name.title = reason.startsWith('cookies')
@@ -343,11 +348,9 @@ function buildSiteRow(site) {
     act(`Signing out of ${site.domain}...`, { type: 'runSite', domain: site.domain });
   });
 
-  // A site nothing could settle gets asked about instead of guessed at. Four rules in a
-  // row were wrong from cookies alone, and the user is the only party who actually knows
-  // whether they have an account. One answer, respected permanently.
+  // A site nothing could settle gets a real login route instead of another cookie guess.
   if (site.needsConfirmation && site.mode !== 'ignored') {
-    actions.append(buildVerdictControl(site.domain));
+    actions.append(buildCandidateControl(site.domain));
   } else {
     actions.append(logout, buildKeepControl(site.domain, site.mode === 'ignored', 'Keep'));
   }
@@ -357,38 +360,41 @@ function buildSiteRow(site) {
 }
 
 /**
- * A positive-only review in practice: adding a real account is the only required action.
- *
- * Worded as a question about the account rather than about the extension, because that is
- * The optional "Not mine" action merely cleans up the candidate queue; ignoring a row is
- * safe because unanswered candidates already stay out. Neither action changes wipe scope.
+ * Open the site's own login flow, or optionally dismiss a candidate the user recognises as
+ * irrelevant. Login never confirms by itself; the cookie transition, OAuth return, or the
+ * site's signed-in page must provide the evidence.
  *
  * @param {string} domain
  */
-function buildVerdictControl(domain) {
+function buildCandidateControl(domain) {
   const wrap = document.createElement('span');
   wrap.className = 'verdict';
 
-  const label = document.createElement('span');
-  label.className = 'muted';
-  label.textContent = 'Account?';
-  wrap.append(label);
+  const login = document.createElement('button');
+  login.className = 'ghost small';
+  login.textContent = 'Login';
+  login.title = `Open ${domain} and verify or complete its login`;
+  login.addEventListener('click', async () => {
+    login.disabled = true;
+    setStatus(`Opening ${domain} login...`, 'busy');
+    const result = await send({ type: 'openLogin', domain });
+    if (result?.error) {
+      login.disabled = false;
+      setStatus(result.error, 'red');
+    }
+  });
 
-  for (const [verdict, text, title] of [
-    ['mine', 'Add', 'Add this as an account of yours'],
-    ['notMine', 'Not mine', 'Remove this candidate. It is still cleared by a full run.']
-  ]) {
-    const button = document.createElement('button');
-    button.className = 'ghost small';
-    button.textContent = text;
-    button.title = title;
-    button.addEventListener('click', async () => {
-      await send({ type: 'setSiteVerdict', domain, verdict });
-      overview = await send({ type: 'getOverview' });
-      render();
-    });
-    wrap.append(button);
-  }
+  const dismiss = document.createElement('button');
+  dismiss.className = 'ghost small';
+  dismiss.textContent = 'Not mine';
+  dismiss.title = 'Remove this candidate. Scheduled safety wipes may still clear it.';
+  dismiss.addEventListener('click', async () => {
+    await send({ type: 'setSiteVerdict', domain, verdict: 'notMine' });
+    overview = await send({ type: 'getOverview' });
+    render();
+  });
+
+  wrap.append(login, dismiss);
 
   return wrap;
 }
@@ -418,7 +424,7 @@ function renderCrashReport(crashTrail) {
  * The "leave this site alone" control, used both per row and for the current site.
  *
  * Checked means the site is excluded from every automatic trigger AND from
- * "Log out of all sessions" - the whole point is that it survives the big red button.
+ * "Log out of confirmed accounts" - the whole point is that it survives the big button.
  * Explicit per-site actions still reach it, so the user is never locked out of clearing
  * a site they deliberately chose to keep.
  *
@@ -430,7 +436,7 @@ function renderCrashReport(crashTrail) {
 function buildKeepControl(domain, kept, labelText) {
   const label = document.createElement('label');
   label.className = 'keep';
-  label.title = `Never clear ${domain} automatically. It will be skipped by scheduled logouts and by "Log out of all sessions".`;
+  label.title = `Never clear ${domain} automatically. It will be skipped by scheduled logouts and by "Log out of confirmed accounts".`;
 
   const box = document.createElement('input');
   box.type = 'checkbox';
@@ -651,7 +657,7 @@ function setBusy(busy) {
   }
 }
 
-el.logoutAll.addEventListener('click', () => act('Ending sessions...', { type: 'runNow' }));
+el.logoutAll.addEventListener('click', () => act('Ending confirmed sessions...', { type: 'runNow' }));
 
 el.logoutCurrent.addEventListener('click', () => {
   const domain = overview?.currentDomain;

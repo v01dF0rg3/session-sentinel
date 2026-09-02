@@ -90,7 +90,11 @@ export async function runLogout(trigger, domains = null) {
     // A site whose sign-in lives on another domain cannot be logged out alone - the
     // surviving session re-issues its cookies on the next visit. Clearing youtube.com
     // without google.com is the case that made this obvious.
-    const { domains: candidates, added } = expandForIdentity(requested, known);
+    // The button-driven bulk run passes the confirmed set explicitly. Restrict identity
+    // expansion to that same set or an unresolved sibling would quietly widen it again.
+    // Per-site and scheduled actions retain the existing broad sibling protection.
+    const identityScope = trigger === 'manual' && domains !== null ? requested : known;
+    const { domains: candidates, added } = expandForIdentity(requested, identityScope);
     if (added.length) {
       await logEvent('identity:expanded', added.map((a) => `${a.domain}<-${a.because}`).join(', '));
     }

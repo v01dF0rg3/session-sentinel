@@ -114,7 +114,7 @@
   const questionDomains = ['bloomberg.com'];
 
   // The real overview attaches these via core/relevance.js. The preview needs the marker so
-  // the separate review queue and its "Yours?" control are both exercised.
+  // the separate review queue and its Login control are both exercised.
   for (const site of sites) {
     // After 0.27.1 almost everything starts as a question: a first-sight baseline can
     // contain the user's own auth cookie, so it may promote but never dismiss.
@@ -339,6 +339,9 @@
               if (i >= 0) sites.splice(i, 1);
             }
             return delay({ ok: true }, 20);
+
+          case 'openLogin':
+            return delay({ ok: true, tabId: 1234 }, 20);
 
           case 'clearEventLog':
             return delay({ ok: true }, 10);

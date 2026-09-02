@@ -31,8 +31,8 @@
  *
  * The gap is a site the user was already signed into before installing: their auth cookie
  * goes into the baseline with everything else. Nothing local can distinguish that, so it is
- * not guessed at — the user is asked, once, in platform/site-verdict.js. They are the only
- * one who actually knows.
+ * not guessed at. The candidate Login flow opens the real site and asks its page to verify
+ * the session; "Not mine" remains the user's permanent dismissal.
  */
 
 import { sessionEvidence } from '../core/risk.js';

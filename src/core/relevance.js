@@ -6,10 +6,10 @@
  * SSO shell they have never visited directly. A list that long is not a list — it is a
  * wall, and a wall gets scrolled past rather than read.
  *
- * So the list is split rather than trimmed. Nothing is hidden from the *run*: the logout
- * still covers everything the plan covers, and the scope line still states the true total.
- * This only decides what is shown first. A display filter that quietly narrowed what gets
- * cleared would be the same class of lie as reporting `revoked` for an orphaned session.
+ * So the list is split rather than trimmed. The manual account button deliberately uses
+ * only the confirmed partition, while scheduled safety wipes retain the broader cookie-
+ * candidate scope. The UI makes that distinction explicit instead of implying every
+ * cookie candidate is an account.
  *
  * SIGNALS, AND WHY THESE ONES.
  *
@@ -18,8 +18,8 @@
  * has ever opened, with timestamps, to answer a question about domains. So relevance is
  * assembled from signals we already hold for other reasons:
  *
- *   signedIn  A sign-in observed after first sight, or the user's explicit answer.
- *             The direct answer to the actual question.
+ *   signedIn  A sign-in observed after first sight, a positive page verdict, or a legacy
+ *             explicit confirmation. The direct answer to the actual question.
  *
  * `open` and `frequent` are deliberately NOT among them. They say a site matters to the
  * user, not that the user has an account on it — and being open in a tab was how ebay.com
@@ -33,8 +33,8 @@
  * unnecessary, it is the bug: a bank the user is signed into shows because they are signed
  * into it, and one they are not does not need the space.
  *
- * An attempted cleanup is deliberately not evidence. A full run tries every plausible
- * session-bearing site, including false positives, so remembering that attempt would make
+ * An attempted cleanup is deliberately not evidence. Broad scheduled wipes try plausible
+ * session-bearing sites, including false positives, so remembering that attempt would make
  * the original guess permanent under a different name.
  *
  * Pure - no chrome.* here.
@@ -56,8 +56,9 @@
  */
 
 /**
- * Reasons that put a site on the confirmed list. Unanswered candidates are kept separate:
- * they are useful questions, but they are not accounts until something settles them.
+ * Reasons that put a site on the confirmed list. Unverified candidates are kept separate:
+ * they are useful login opportunities, but they are not accounts until something settles
+ * them.
  */
 const QUALIFYING = /** @type {const} */ ([
   ['signedIn', 'signed in here']
@@ -142,7 +143,7 @@ export function confirmedAccountDomains(sites, signals = {}) {
  * @property {(T & { reasons: string[] })[]} configured Unconfirmed sites the user chose
  *   to keep, visible so the choice can be reversed without calling it an account.
  * @property {(T & { reasons: string[], needsConfirmation: boolean })[]} questions
- *   Plausible accounts that need the user's answer.
+ *   Plausible accounts that need live login verification.
  * @property {(T & { reasons: string[] })[]} other Everything else, behind a disclosure.
  * @property {boolean} narrowed The split actually hid something.
  */

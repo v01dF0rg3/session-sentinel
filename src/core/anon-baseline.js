@@ -20,8 +20,8 @@
  * First sight records the auth-grade cookie names already present when the extension first
  * sees a domain. Those names prove nothing. If a new auth-grade name appears later, that is
  * positive sign-in evidence. If every name was already present, the answer remains unknown
- * rather than being silently called anonymous. The user settles that upgrade gap once via
- * Yours? Yes / No.
+ * rather than being silently called anonymous. The candidate Login flow lets the site
+ * settle that upgrade gap with its own authenticated page.
  *
  * Pure — no chrome.* and no fetch here.
  */
