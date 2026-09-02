@@ -100,13 +100,18 @@
   const frequentNow = new Set(['google.com', 'reddit.com']);
   const actedOn = new Set(['github.com', 'slack.com']);
 
+  // Signed-in is now the primary signal, and it is deliberately narrow: only a handful of
+  // the fixture's domains carry anything resembling a real auth cookie. Being critical is
+  // no longer enough on its own - that rule is what put aol.com on screen.
+  const signedInNow = new Set(['github.com', 'google.com', 'youtube.com', 'chase.com', 'slack.com']);
+
   const usedDomains = sites
     .filter(
       (s) =>
+        signedInNow.has(s.domain) ||
         openNow.has(s.domain) ||
         frequentNow.has(s.domain) ||
         actedOn.has(s.domain) ||
-        s.tier === 'critical' ||
         s.mode === 'ignored'
     )
     .map((s) => s.domain);

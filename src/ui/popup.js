@@ -75,13 +75,22 @@ function render() {
   const critical = sites.filter((/** @type {any} */ s) => s.tier === 'critical').length;
   const high = sites.filter((/** @type {any} */ s) => s.tier === 'high').length;
   const kept = sites.filter((/** @type {any} */ s) => s.mode === 'ignored').length;
-  el.siteCount.textContent = `${sites.length} site${sites.length === 1 ? '' : 's'}`;
+  // "225 sites" under a heading reading SIGNED IN was the claim that started this: most of
+  // those had set a cookie while the user read a page. The shown count leads because it is
+  // the honest one; the total stays visible because it is what a full run covers.
+  const shown = overview.relevance?.used?.length ?? sites.length;
+  el.siteCount.textContent =
+    shown === sites.length ? `${sites.length} signed in` : `${shown} of ${sites.length}`;
+  el.siteCount.title =
+    shown === sites.length
+      ? ''
+      : `${shown} with signs of an account. All ${sites.length} have cookies here and are covered by a full run.`;
   el.filter.hidden = sites.length < 8;
 
   if (!sites.length) {
     el.scopeHint.textContent = 'No signed-in sites detected.';
   } else {
-    const scope = `Ends every session found here, hardest first (${critical} critical, ${high} high risk).`;
+    const scope = `Ends every session found in this browser, hardest first (${critical} critical, ${high} high risk).`;
     el.scopeHint.textContent = kept
       ? `${scope} ${kept} kept site${kept === 1 ? '' : 's'} will be skipped.`
       : scope;

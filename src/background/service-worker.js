@@ -29,6 +29,7 @@ import { clearCoverage, readCoverage } from '../platform/coverage.js';
 import { summariseCoverage } from '../core/coverage.js';
 import { partitionSites } from '../core/relevance.js';
 import { knownChangePasswordSupport, probeChangePassword } from '../platform/change-password.js';
+import { clearObservedLogins, observedLogins, recordSignedIn } from '../platform/login-watch.js';
 
 const RECIPE_ALARM = 'sentinel-recipe-refresh';
 
@@ -267,6 +268,13 @@ async function handleMessage(message) {
       await clearCoverage();
       return { ok: true };
 
+    // Both records describe the user rather than the extension, so the control that
+    // forgets one forgets the other. Leaving a list of every site they have signed into
+    // behind a button labelled "clear" would be exactly the wrong surprise.
+    case 'clearObservedLogins':
+      await clearObservedLogins();
+      return { ok: true };
+
     case 'getEventLog':
       return readLog();
 
@@ -318,7 +326,7 @@ async function getOverview() {
   // A profile carries hundreds of cookied domains and a dozen the user would recognise.
   // Split them so the recognisable ones are what gets seen; the run is unaffected, and
   // the popup still states the true total next to the button that acts on it.
-  const { used, other, narrowed } = partitionSites(discovered, await relevanceSignals(settings));
+  const { used, other, narrowed } = partitionSites(discovered, await relevanceSignals(settings, sessions));
   const sites = [...used, ...other];
 
   const bundle = await getStoredBundle();
@@ -412,9 +420,10 @@ async function findPasswordPages(domains) {
  * (tabs we can already read) or already opt-in (top sites).
  *
  * @param {any} settings
+ * @param {import('../platform/sessions.js').SiteSession[]} sessions
  * @returns {Promise<import('../core/relevance.js').RelevanceSignals>}
  */
-async function relevanceSignals(settings) {
+async function relevanceSignals(settings, sessions) {
   /** @type {Set<string>} */
   const open = new Set();
   try {
@@ -429,7 +438,16 @@ async function relevanceSignals(settings) {
   const frequent = settings.useVisitFrequency ? await getFrequentDomains() : new Set();
   const acted = new Set((await readCoverage()).map((entry) => entry.domain));
 
-  return { open, frequent, acted };
+  // Two routes to the same conclusion. The cookie jar answers "is there an auth token here
+  // right now", which misses a site whose cookies this extension just cleared; the
+  // observed record answers "did a sign-in happen here", which survives that. Together
+  // they keep a site on the list across the logout that removed the evidence for it.
+  const fromCookies = sessions.filter((session) => session.signedIn).map((s) => s.domain);
+  await recordSignedIn(fromCookies);
+
+  const signedIn = new Set([...fromCookies, ...(await observedLogins())]);
+
+  return { signedIn, open, frequent, acted };
 }
 
 /** Keep Chrome's idle threshold in step with the configured timeout. */

@@ -8,6 +8,30 @@ when the screen locks, or when the browser closes.
 It works out of the box. Install it, accept the permission prompt, and it protects your
 high-risk accounts with no configuration.
 
+## Which sites it shows you
+
+The cookie jar knows every domain that has ever set an auth-looking cookie. On a real
+profile that is a couple of hundred, and almost none of them are accounts you have.
+
+So two questions are kept apart, deliberately:
+
+- **What should be cleared?** Answered generously. Missing a session cookie leaves a live
+  token behind, so anything that might carry one is in scope.
+- **What should be shown?** Answered strictly. The discriminator is `httpOnly` — analytics,
+  consent and preference cookies must be readable by page scripts or they are useless,
+  while real auth cookies are set `httpOnly` precisely so a cross-site script cannot steal
+  them. One convincing auth cookie, or two near-misses, means you have an account here.
+
+Everything else collapses behind **"Show N other sites with sign-in cookies"**. It is a
+display split, not a change of scope: the total stays on screen, the filter still searches
+all of it, and "Log out of all sessions" still clears all of it.
+
+Sign-ins are remembered — registrable domain and timestamp, nothing else, capped at 800 and
+never leaving the machine — so a site stays listed after the extension has cleared the very
+cookies that proved it. This is not `chrome.history`: history tells you what pages you
+opened, which cannot distinguish a news article from an inbox, and is a great deal to ask
+for to answer a question about domains.
+
 ## What it cannot do, stated up front
 
 It cannot make a website revoke your other sessions. Nothing installed in a browser can.

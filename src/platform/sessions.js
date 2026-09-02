@@ -10,13 +10,16 @@
  */
 
 import { normalizeCookieDomain, registrableDomain } from '../core/domain.js';
-import { looksLikeSessionCookie } from '../core/risk.js';
+import { looksLikeSessionCookie, sessionEvidence } from '../core/risk.js';
 
 /**
  * @typedef {object} SiteSession
  * @property {string} domain Registrable domain.
  * @property {number} cookieCount
  * @property {number} sessionCookieCount Cookies that look auth-bearing.
+ * @property {number} strongCount Cookies that look like real auth tokens.
+ * @property {number} moderateCount
+ * @property {boolean} signedIn Confident the user has an account here.
  * @property {boolean} hasHostOnlySecure
  * @property {number} lastAccessHint Best-effort recency for sorting.
  */
@@ -43,6 +46,9 @@ export async function discoverSessions() {
         domain,
         cookieCount: 0,
         sessionCookieCount: 0,
+        strongCount: 0,
+        moderateCount: 0,
+        signedIn: false,
         hasHostOnlySecure: false,
         lastAccessHint: 0
       };
@@ -51,12 +57,24 @@ export async function discoverSessions() {
 
     entry.cookieCount += 1;
     if (looksLikeSessionCookie(cookie.name)) entry.sessionCookieCount += 1;
+
+    // Graded separately from the generous count above. That one decides what to destroy
+    // and errs towards yes; this one decides what to put on screen and must not.
+    const evidence = sessionEvidence(cookie);
+    if (evidence === 'strong') entry.strongCount += 1;
+    else if (evidence === 'moderate') entry.moderateCount += 1;
     if (cookie.secure && cookie.httpOnly) entry.hasHostOnlySecure = true;
     // Session cookies (no expiry) are a strong signal of an active login.
     if (cookie.expirationDate === undefined) entry.sessionCookieCount += 1;
     if (cookie.expirationDate && cookie.expirationDate > entry.lastAccessHint) {
       entry.lastAccessHint = cookie.expirationDate;
     }
+  }
+
+  // One unmistakable auth cookie, or two near-misses. Anything less is a site that set a
+  // cookie while the user read a page, not one they have an account on.
+  for (const entry of sites.values()) {
+    entry.signedIn = entry.strongCount > 0 || entry.moderateCount >= 2;
   }
 
   return [...sites.values()];

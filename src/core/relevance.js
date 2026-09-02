@@ -18,12 +18,19 @@
  * has ever opened, with timestamps, to answer a question about domains. So relevance is
  * assembled from signals we already hold for other reasons:
  *
- *   open      The site is open in a tab right now. Strongest possible evidence of use,
- *             free, and needs no permission we do not already have.
+ *   signedIn  A cookie that looks like a real auth token, or a sign-in this extension
+ *             watched happen. The direct answer to the actual question.
+ *   open      The site is open in a tab right now. Free, and needs no permission we do
+ *             not already have.
  *   frequent  Chrome's own top-sites list. Optional permission, off by default.
  *   acted     The user has already run a logout on this site. They cared once.
- *   critical  A known-sensitive domain from the curated list. Not evidence of use, but a
- *             bank sitting in the "other" pile is a worse failure than a short list.
+ *
+ * An earlier version also promoted anything in the curated high-value list, reasoning that
+ * a bank behind a disclosure was worse than a longer list. That was compensating for a
+ * sign-in signal too weak to trust — and it put aol.com in front of a user who has no AOL
+ * account. With a signal that answers the question directly, the compensation is not only
+ * unnecessary, it is the bug: a bank the user is signed into shows because they are signed
+ * into it, and one they are not does not need the space.
  *
  * The set grows as the extension is used, which is the right direction: day one shows the
  * handful of tabs that are open, and it gets more useful from there.
@@ -33,6 +40,7 @@
 
 /**
  * @typedef {object} RelevanceSignals
+ * @property {Set<string>} [signedIn] Domains with real evidence of an account.
  * @property {Set<string>} [open] Domains with a tab open right now.
  * @property {Set<string>} [frequent] Domains from chrome.topSites, when granted.
  * @property {Set<string>} [acted] Domains the extension has run on before.
@@ -47,10 +55,10 @@
 
 /** Why a site earned its place, strongest first. The order is the ranking. */
 const REASONS = /** @type {const} */ ([
+  ['signedIn', 'signed in here'],
   ['open', 'open in a tab now'],
   ['frequent', 'one of your most-visited sites'],
-  ['acted', 'you have signed out of this before'],
-  ['critical', 'a high-value account']
+  ['acted', 'you have signed out of this before']
 ]);
 
 const TIER_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
@@ -64,12 +72,10 @@ const TIER_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
  */
 export function reasonsToShow(site, signals) {
   const held = {
+    signedIn: signals.signedIn?.has(site.domain) ?? false,
     open: signals.open?.has(site.domain) ?? false,
     frequent: signals.frequent?.has(site.domain) ?? false,
-    acted: signals.acted?.has(site.domain) ?? false,
-    // Only 'critical'. Including 'high' would put most of the curated list back on screen
-    // and undo the split entirely.
-    critical: site.tier === 'critical'
+    acted: signals.acted?.has(site.domain) ?? false
   };
 
   return REASONS.filter(([key]) => held[key]).map(([, label]) => label);

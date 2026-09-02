@@ -1,5 +1,73 @@
 # Changelog
 
+## 0.23.0 — 1 September 2026
+
+### "225 signed-in sites" was not true
+
+A real profile reported 225 signed-in sites and led with `aol.com` — an account the user
+does not have. Two separate mistakes, both in the same direction.
+
+The heuristic that finds sessions is deliberately generous, because the cost of missing one
+is leaving a live token behind. It was also being used to decide what to put on screen,
+where a wrong yes is exactly what produces a wall of sites. Worse, any cookie with no
+expiry counted — which is most analytics and consent cookies.
+
+Sign-in evidence is now graded separately from wipe scope. **The discriminator is
+`httpOnly`**: analytics, consent and preference cookies have to be readable by page scripts
+or they are useless, while real auth cookies are set `httpOnly` precisely so a cross-site
+script cannot steal them. Nothing else separates the two nearly as cleanly — not expiry,
+not the name.
+
+- **strong** — a session-ish name, `httpOnly`, `Secure`, and a value long enough to be a
+  token. `sessionid`, `PHPSESSID`, `__Secure-1PSID`, `user_session`.
+- **moderate** — unmistakable name and `httpOnly`, but missing `Secure` or short.
+- **weak** — script-readable. `csrftoken` has "token" in the name and is *required* to be
+  readable; it is not proof of a session.
+
+A site is shown as signed in with one strong cookie, or two moderate ones. In the harness
+that takes a 48-site fixture to 6.
+
+**Wipe scope is unchanged.** `likelyLoggedIn` is still generous and still decides what gets
+cleared; only the display question got stricter. Narrowing both would start leaving live
+tokens behind — the exact failure this extension exists to prevent. A test pins the pair.
+
+### Being a high-value account is no longer enough to be listed
+
+0.22.0 promoted anything in the curated critical list on the reasoning that a bank behind a
+disclosure was worse than a longer list. That was compensating for a sign-in signal too
+weak to trust, and it is what put `aol.com` in front of someone with no AOL account. With a
+signal that answers the question directly, the compensation *is* the bug: a bank you are
+signed into shows because you are signed into it, and one you are not does not need the
+space.
+
+### The list remembers accounts across the logout that clears them
+
+Sign-ins observed during a cookie scan are recorded — registrable domain and timestamp,
+nothing else — so a site stays on the list after the extension has removed the very cookies
+that proved it. A list that forgot a site the moment it did its job would be useless.
+
+**Not `chrome.history`**, which was the obvious idea and is the wrong instrument twice: it
+answers "what pages did you open", which cannot tell a news article from an inbox, and it
+is an enormous thing for a privacy tool to ask for — every URL, with timestamps, forever,
+to answer a question about domains.
+
+**Not `chrome.cookies.onChanged`** either. In MV3 a listener wakes the service worker, and
+that event fires for every cookie written anywhere in the browser — hundreds a minute,
+almost none of them sign-ins. The cookie jar is already scanned in full whenever the popup
+opens or a run starts, so the same conclusions are free at those moments.
+
+The record is capped at 800 domains, evicted oldest-first, never leaves the machine, and is
+cleared by the same control that clears the coverage tally.
+
+### Also
+
+- The popup header read `225 sites` under a heading saying SIGNED IN. It now reads
+  `6 of 48`, with the total explained on hover and still covered by a full run.
+- The scope line says "found in this browser" rather than "found here", which could be read
+  as "found in this list".
+- 125 tests (up from 115): `tests/sign-in.test.mjs`, including a fake cookie jar that pins
+  the analytics-only case.
+
 ## 0.22.0 — 1 September 2026
 
 ### The list is a list again, not a wall

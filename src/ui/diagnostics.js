@@ -362,6 +362,10 @@ document.getElementById('coverage-copy')?.addEventListener('click', async () => 
 
 document.getElementById('coverage-clear')?.addEventListener('click', async () => {
   await chrome.runtime.sendMessage({ type: 'clearCoverage' });
+  // The record of which sites the user has signed into is the same kind of thing as the
+  // coverage tally - an observation about them, not about the extension - so one control
+  // forgets both. Leaving it behind a button labelled "clear" would be the wrong surprise.
+  await chrome.runtime.sendMessage({ type: 'clearObservedLogins' });
   await loadCoverage();
 });
 

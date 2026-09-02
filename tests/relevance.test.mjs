@@ -30,27 +30,31 @@ test('an unremarkable site with no signals is not shown first', () => {
   assert.deepEqual(reasonsToShow(site('never-visited.example', 'low'), {}), []);
 });
 
-test('a critical site is shown even with no evidence the user uses it', () => {
-  // Evidence of use is the point of the split, but a bank buried under a disclosure is a
-  // worse failure than a list three rows longer.
-  assert.deepEqual(reasonsToShow(site('chase.com', 'critical'), {}), ['a high-value account']);
+test('being signed in is what puts a site on the list', () => {
+  assert.deepEqual(reasonsToShow(site('chase.com', 'critical'), {
+    signedIn: new Set(['chase.com'])
+  }), ['signed in here']);
 });
 
-test('high risk alone is not enough to be shown', () => {
-  // The curated list is large. Admitting 'high' would put most of it back on screen and
-  // undo the split entirely.
+test('a high-value account the user has no account on is not shown', () => {
+  // The bug this replaced. aol.com is in the curated critical list, so promoting anything
+  // critical put it in front of a user with no AOL account — and it was compensating for
+  // a sign-in signal too weak to trust. With a signal that answers the question, the
+  // compensation is the bug.
+  assert.deepEqual(reasonsToShow(site('aol.com', 'critical'), {}), []);
   assert.deepEqual(reasonsToShow(site('somewhere.example', 'high'), {}), []);
 });
 
 test('reasons accumulate, strongest first', () => {
   const reasons = reasonsToShow(site('github.com', 'critical'), {
+    signedIn: new Set(['github.com']),
     open: new Set(['github.com']),
     acted: new Set(['github.com'])
   });
   assert.deepEqual(reasons, [
+    'signed in here',
     'open in a tab now',
-    'you have signed out of this before',
-    'a high-value account'
+    'you have signed out of this before'
   ]);
 });
 
@@ -67,7 +71,7 @@ test('the split hides the long tail and says that it did', () => {
 test('a split that would hide almost nothing is not made at all', () => {
   // Two extra rows do not justify a disclosure control the user has to find and click.
   const sites = [site('github.com', 'critical'), site('a.example'), site('b.example')];
-  const { used, other, narrowed } = partitionSites(sites, {});
+  const { used, other, narrowed } = partitionSites(sites, { signedIn: new Set(['github.com']) });
 
   assert.equal(narrowed, false);
   assert.equal(other.length, 0);
@@ -87,6 +91,7 @@ test('sensitivity outranks evidence of use', () => {
   // lose than a bank visited twice a year.
   const sites = [site('chase.com', 'critical'), site('reddit.com', 'medium'), ...filler(5)];
   const { used } = partitionSites(sites, {
+    signedIn: new Set(['chase.com', 'reddit.com']),
     open: new Set(['reddit.com']),
     frequent: new Set(['reddit.com'])
   });
