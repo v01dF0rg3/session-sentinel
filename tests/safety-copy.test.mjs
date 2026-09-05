@@ -20,6 +20,9 @@ const USER_FACING_FILES = [
   '../src/ui/options.html',
   '../src/ui/recovery.html',
   '../src/ui/recovery.js',
+  '../src/ui/recovery-plan.js',
+  '../src/core/recovery-handoff.js',
+  '../data/recovery-checklist.js',
   '../src/ui/welcome.html',
   '../src/ui/options.js',
   // Diagnostics and the written docs describe what the extension proves, so they can

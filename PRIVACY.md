@@ -1,14 +1,14 @@
 # Privacy Policy — Session Sentinel
 
-Last updated: 2 September 2026. Applies to version 0.34.0.
+Last updated: 4 September 2026. Applies to version 0.35.0.
 
 ## The short version
 
 Session Sentinel has no user account, analytics, advertising, or telemetry, and it does
 not sell your data or upload your account list. Account decisions, settings, and reports
-stay in your Chrome profile. The extension does make the feature-specific network requests
-listed below; websites and the optional recipe host can see an ordinary request and its IP
-address.
+stay in your Chrome profile unless you choose to save or print a recovery plan. The extension
+does make the feature-specific network requests listed below; websites and the optional
+recipe host can see an ordinary request and its IP address.
 
 ## What it reads
 
@@ -106,6 +106,24 @@ revoke at any time.
 Switching it off removes the permission.
 
 ## Your control
+
+### Saving or printing a recovery plan
+
+In **Been hacked?**, **Save text file** creates a local text download. **Print / Save PDF**
+opens Chrome's print dialog. These actions happen only when you request them; the extension
+does not upload the plan or add a new permission.
+
+The plan contains confirmed website domains, their risk levels, a confirmation label, the
+creation time, fixed recovery instructions, and a count of any invalid entries omitted.
+It excludes uncertain candidates, passwords, cookies, tokens, usernames, full page URLs,
+and previously checked recovery boxes. The list of services you use can still be sensitive.
+
+Saved files and printouts are separate from extension storage and are not removed when
+you uninstall Session Sentinel. Keep them private and delete or dispose of them when no
+longer needed. Your chosen printer, save location, or file-sync service controls what
+happens to a copy after you save or print it.
+
+### Settings and removal
 
 - Pause all protection from the toolbar popup at any time
 - Mark any site "never clear" so it is skipped by everything automatic

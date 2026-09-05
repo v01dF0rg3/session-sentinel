@@ -2,6 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Session Sentinel — recovery</title>
     <link rel="stylesheet" href="ui.css" />
   </head>
@@ -19,19 +20,27 @@
       </div>
     </header>
 
-    <div class="note">
-      <strong>If malware may still be on this computer, stop here.</strong> Disconnect the
-      affected computer and continue from another trusted phone or computer. Do not enter
-      a new password or recovery code on a device that may still be infected.
-    </div>
+    <section class="card recovery-handoff" aria-labelledby="handoff-heading">
+      <h2 id="handoff-heading">Continue on a trusted device</h2>
+      <p>If malware may be on this computer, use another trusted phone or computer for
+        recovery. Do not enter new passwords or view or generate backup codes on this device.</p>
+      <div class="handoff-actions">
+        <button id="print-plan-button" class="primary" type="button" disabled>Print / Save PDF</button>
+        <button id="save-plan-button" class="ghost" type="button" disabled>Save text file</button>
+      </div>
+      <p class="muted" id="handoff-detail">Preparing a plan with all confirmed accounts, at every risk level.</p>
+      <p class="muted">Keep the plan private. You can read a printout or photograph it with your phone.
+        A password change does not guarantee every session is closed.</p>
+      <p id="export-status" role="status" aria-live="polite"></p>
+    </section>
 
-    <div class="note" style="margin-top:12px">
-      <strong>For each account:</strong> review active sessions or devices and remove anything
-      unfamiliar; use <em>sign out everywhere</em> if the site offers it; change the password
-      if it may be exposed; then review two-step verification, recovery methods, connected
-      apps, and backup codes. A password change does not guarantee every session is closed.
-      Nothing on this page acts automatically.
-    </div>
+    <div id="recovery-essentials"></div>
+    <noscript>Recovery guidance needs JavaScript. Use a trusted device to review your main email,
+      sign-in accounts, password manager, banking, work, social and gaming accounts.</noscript>
+
+    <h2 class="recovery-list-heading">Accounts found in this browser</h2>
+    <p id="load-status" class="muted" role="status" aria-live="polite">Loading the account list…</p>
+    <button id="retry" class="ghost small" type="button" hidden>Try again</button>
 
     <section class="card">
       <div class="row" style="padding-top:0">
@@ -40,13 +49,13 @@
           <p id="progress-detail"></p>
         </div>
         <div class="row-control">
-          <select id="scope">
+          <select id="scope" aria-label="Account risk level" disabled>
             <option value="critical">critical accounts only</option>
             <option value="high">critical and high risk</option>
             <option value="medium">down to medium risk</option>
-            <option value="low">everything I am signed into</option>
+            <option value="low">all detected sites and candidates</option>
           </select>
-          <button id="reset" class="ghost small" type="button" title="Clear the ticks and start over">Start over</button>
+          <button id="reset" class="ghost small" type="button" title="Clear the ticks and start over" disabled>Start over</button>
         </div>
       </div>
       <div class="progress-track" aria-hidden="true"><div id="progress-bar" class="progress-fill"></div></div>
@@ -55,9 +64,11 @@
     <div id="groups"></div>
 
     <p class="muted" id="empty" hidden>
-      No accounts at this risk level were found. Widen the scope above, or browse a little
-      and come back — sites are detected from the cookies in this profile.
+      No accounts at this risk level were found. Use the essential checklist above and
+      include accounts you use in other browsers or apps. You can also widen the risk level.
     </p>
+
+    <div id="print-plan" class="print-only"></div>
 
     <script type="module" src="recovery.js"></script>
   </body>

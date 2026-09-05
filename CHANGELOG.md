@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.35.0 — 4 September 2026
+
+### A recovery plan you can take to a trusted device
+
+**Been hacked?** now offers **Print / Save PDF** and **Save text file**. The portable plan
+includes confirmed domains at all risk levels, independent of the on-screen filter, and
+fresh checkboxes. It excludes candidates, credentials, cookie data, usernames, full URLs,
+and saved progress. Domain and risk validation limit what can enter the file.
+
+An always-visible essential checklist covers accounts browser detection can miss. Empty
+and completed lists no longer imply that recovery is finished; a failed account load offers
+a retry and an essential-only printable plan. Late password-page discovery cannot overwrite
+a newer scope. Recovery layout now adapts to narrow screens and has a dedicated print style.
+
+Recovery guidance also calls out app passwords and unfamiliar recovery methods, and warns
+against entering replacement credentials or viewing backup codes on an affected device.
+The plan is a reminder, not a trusted inventory or proof of revocation.
+
+- 196 Node tests (up from 187), including confirmed-only export, private-field exclusion,
+  hostile input, all-risk coverage, empty plans, and large inventories.
+
 ## 0.34.1 — 2 September 2026
 
 Both fixes come from running the diagnostics page in an installed Chrome 152. The suite

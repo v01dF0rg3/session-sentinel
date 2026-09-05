@@ -7,6 +7,18 @@
  */
 
 (function () {
+  const previewQuery = new URLSearchParams(location.search);
+  // Render the real print rules on screen for visual QA where a native print dialog is
+  // unavailable. This checks styling, not page breaks or physical printer behavior.
+  if (previewQuery.get('print') === '1') {
+    window.addEventListener('load', () => {
+      for (const sheet of document.styleSheets) {
+        for (const rule of sheet.cssRules) {
+          if (rule instanceof CSSMediaRule && rule.conditionText === 'print') rule.media.mediaText = 'screen';
+        }
+      }
+    }, { once: true });
+  }
   const settings = {
     version: 1,
     enabled: true,
@@ -203,7 +215,10 @@
     notifications: { create: () => delay('n1', 10), clear: () => delay(true, 5) },
     runtime: {
       getManifest: () => ({ version: '0.4.0', permissions: ['storage','alarms','idle','cookies','browsingData','scripting','tabs','notifications'] }),
-      sendMessage(message) {
+      async sendMessage(message) {
+        if (previewQuery.get('recovery') === 'save-error' && ['markRecoveryStep', 'setRecoveryScope', 'resetRecovery'].includes(message?.type)) {
+          return delay({ error: 'Recovery fixture: storage unavailable' }, 20);
+        }
         switch (message?.type) {
           case 'getOverview':
             return delay(overview(), 60);
@@ -224,6 +239,8 @@
           }
 
           case 'getRecovery': {
+            const fixture = previewQuery.get('recovery');
+            if (fixture === 'error') throw new Error('Recovery fixture: worker unavailable');
             const all = [
               { domain: 'google.com', tier: 'critical', category: 'identity', passwordUrl: 'https://myaccount.google.com/signinoptions/password', siteUrl: 'https://google.com', sessionsUrl: 'https://myaccount.google.com/device-activity', sessionsLabel: 'Your devices', sharesSignInWith: ['youtube.com'] },
               { domain: 'aol.com', tier: 'critical', category: 'identity', siteUrl: 'https://aol.com', sharesSignInWith: [] },
@@ -232,22 +249,37 @@
               { domain: 'github.com', tier: 'critical', category: 'infrastructure', passwordUrl: 'https://github.com/settings/security', siteUrl: 'https://github.com', sessionsUrl: 'https://github.com/settings/sessions', sessionsLabel: 'Web sessions', sharesSignInWith: [] },
               { domain: 'azure.com', tier: 'critical', category: 'infrastructure', siteUrl: 'https://azure.com', sharesSignInWith: [] },
               { domain: 'discord.com', tier: 'critical', category: 'communication', siteUrl: 'https://discord.com', sessionsUrl: 'https://discord.com/channels/@me', sessionsLabel: 'Settings, Devices', sharesSignInWith: [] },
-              { domain: 'linkedin.com', tier: 'high', category: 'communication', passwordUrl: 'https://www.linkedin.com/psettings/change-password', siteUrl: 'https://linkedin.com', sharesSignInWith: [] }
-            ];
-            const labels = { identity: 'Email and identity', finance: 'Money', infrastructure: 'Infrastructure and code', communication: 'Communication and social' };
+              { domain: 'linkedin.com', tier: 'high', category: 'communication', passwordUrl: 'https://www.linkedin.com/psettings/change-password', siteUrl: 'https://linkedin.com', sharesSignInWith: [] },
+              { domain: 'chess.com', tier: 'low', category: 'other', siteUrl: 'https://chess.com', sharesSignInWith: [] },
+              { domain: 'bloomberg.com', tier: 'low', category: 'other', siteUrl: 'https://bloomberg.com', sharesSignInWith: [], unverified: true }
+            ].map((step) => ({ ...step, unverified: step.unverified === true }));
+            if (fixture === 'empty') all.length = 0;
+            if (fixture === 'large') {
+              all.push(...Array.from({ length: 100 }, (_, i) => ({
+                domain: `recovery-fixture-${i + 1}.com`, tier: 'low', category: 'other',
+                siteUrl: `https://recovery-fixture-${i + 1}.com`, sharesSignInWith: [], unverified: false
+              })));
+            }
+            const labels = { identity: 'Email and identity', finance: 'Money', infrastructure: 'Infrastructure and code', communication: 'Communication and social', other: 'Everything else' };
             const whys = {
               identity: 'Review these first. Email and identity accounts can reset or unlock many other accounts, so leaving them compromised can undo later recovery work.',
               finance: 'Direct loss. Stored cards, transfers, and anything that can move money.',
               infrastructure: 'Lasting damage. Code, deployments, domains and cloud accounts can be altered in ways that outlive the breach.',
-              communication: 'Impersonation, and a reset vector of their own for anything tied to these accounts.'
+              communication: 'Impersonation, and a reset vector of their own for anything tied to these accounts.',
+              other: 'Lower stakes, but still worth reviewing once the rest is done.'
             };
-            const groups = ['identity','finance','infrastructure','communication'].map((c) => ({
+            const fullGroups = ['identity','finance','infrastructure','communication','other'].map((c) => ({
               category: c, label: labels[c], why: whys[c], steps: all.filter((s) => s.category === c)
             }));
+            const minTier = message.minTier ?? recovery.minTier;
+            const ranks = { critical: 3, high: 2, medium: 1, low: 0 };
+            const groups = fullGroups.map((group) => ({ ...group, steps: group.steps.filter((s) => ranks[s.tier] >= ranks[minTier]) })).filter((group) => group.steps.length);
+            const { createRecoveryHandoff } = await import('../src/core/recovery-handoff.js');
             const flat = groups.flatMap((g) => g.steps.map((s) => s.domain));
             return delay({
               groups,
-              state: { ...recovery },
+              handoff: createRecoveryHandoff(fullGroups),
+              state: { ...recovery, minTier },
               progress: {
                 done: flat.filter((d) => recovery.done.includes(d)).length,
                 total: flat.length,

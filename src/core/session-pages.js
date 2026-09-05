@@ -176,7 +176,7 @@ export function compromiseAdviceFor(domain, hasVerifiedGlobalRecipe = false) {
         : `Session Sentinel cannot verify that ${pretty}'s logout invalidates copied tokens or sessions on other devices.`;
 
   const advice =
-    'If malware may be active, stop and use another trusted device. Review active sessions or devices, remove anything unfamiliar, and use "sign out everywhere" if offered. Change the password if it may be exposed, then review MFA, recovery methods, and connected apps. A password change does not guarantee every session is closed.';
+    'If malware may be active, stop and use another trusted device. Review active sessions or devices, remove anything unfamiliar, and use "sign out everywhere" if offered. Review connected apps, app passwords, MFA and recovery methods for unfamiliar access. Change an exposed password promptly, following the provider\'s recovery instructions. Only view or generate backup codes on your trusted device. A password change does not guarantee every session is closed.';
 
   return {
     domain,

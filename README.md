@@ -40,6 +40,7 @@ a guided place to start when they know they are being hacked.
 - Separates a sign-out attempt from verified revocation and local-only cleanup.
 - Provides a **Been hacked?** checklist that starts with the accounts that can unlock all
   your other accounts.
+- Prints or saves a private recovery plan you can use on another trusted device.
 - Lets you mark sites **Never clear this site** when you want them left alone.
 
 Session Sentinel does not upload a list of your accounts or browsing activity.
@@ -84,6 +85,27 @@ password. Password-change behavior varies, so verify the session list afterward.
 **Attempt sign-out of confirmed accounts** is an optional containment action. If malware may
 still be running, do the recovery steps from a trusted device first; the button does not make
 an infected computer safe and does not prove that stolen tokens were revoked.
+
+### Take the checklist to a trusted device
+
+Open **Been hacked?**, then choose **Print / Save PDF** or **Save text file**. In Chrome's
+print dialog, choose a printer or **Save as PDF**. You can also read a printout or photograph
+it with your phone, without installing Session Sentinel on the other device.
+
+The plan includes your confirmed website domains at **every risk level**, even when the
+screen shows only high-risk accounts. It leaves out uncertain candidates and starts with
+fresh, unchecked boxes. It contains no passwords, cookies, tokens, account usernames, or
+security-page links. Keep it private: the website names can still be personal information.
+
+Always follow the **essential accounts** checklist too: email, sign-in providers, password
+managers, banking, work, and social or gaming accounts. Browser detection can miss accounts,
+including ones used in other profiles or apps. An empty list does **not** mean you are safe.
+If account loading fails, you can still print the essential checklist.
+
+A plan made on an infected computer could be incomplete or altered. Open services through
+their official apps or bookmarks you trust, not because an unfamiliar domain appears in
+the plan. Review each login you use on a service; several accounts can share one domain.
+Checking a box records your review, not proof that a stolen session was revoked.
 
 ## Install from this repository
 

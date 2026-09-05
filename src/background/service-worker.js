@@ -22,6 +22,7 @@ import { getActiveRecipes, getStoredBundle, refreshBundle, resetToBuiltin } from
 import { clearTrail, readTrail } from '../platform/breadcrumb.js';
 import { clearLog, logEvent, readLog } from '../platform/eventlog.js';
 import { buildRecoveryPlan, recoveryProgress } from '../core/compromise.js';
+import { createRecoveryHandoff } from '../core/recovery-handoff.js';
 import { clearRecoveryState, getRecoveryState, markRecoveryStep, updateRecoveryState } from '../platform/recovery.js';
 import { dropFrequencyPermission, getFrequentDomains, hasFrequencyPermission } from '../platform/frequency.js';
 import { clearCoverage, readCoverage } from '../platform/coverage.js';
@@ -270,7 +271,10 @@ async function handleMessage(message) {
       // Fill in from what has already been discovered, so a second visit renders complete
       // instead of blank-then-populated. Anything still missing is probed on request.
       applyPasswordPages(groups, await knownChangePasswordSupport());
-      return { groups, state: { ...state, minTier }, progress: recoveryProgress(groups, state.done) };
+      // A portable plan must not silently inherit the screen's risk filter or include
+      // candidates as confirmed accounts. Only allowlisted fields leave this boundary.
+      const handoff = createRecoveryHandoff(buildRecoveryPlan(confirmed, settings, 'low'));
+      return { groups, handoff, state: { ...state, minTier }, progress: recoveryProgress(groups, state.done) };
     }
 
     case 'findPasswordPages':

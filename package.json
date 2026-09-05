@@ -1,11 +1,11 @@
 {
   "name": "session-sentinel",
-  "version": "0.34.1",
+  "version": "0.35.0",
   "private": false,
   "type": "module",
   "description": "Manifest V3 Chrome extension that attempts site sign-out, clears local session data, and guides account recovery.",
   "scripts": {
-    "test": "node --test tests/core.test.mjs tests/trust.test.mjs tests/bundle.test.mjs tests/tabs.test.mjs tests/identity.test.mjs tests/recipe-run.test.mjs tests/compromise.test.mjs tests/coverage.test.mjs tests/relevance.test.mjs tests/change-password.test.mjs tests/sign-in.test.mjs tests/anon-baseline.test.mjs tests/incognito-probe.test.mjs tests/oauth-return.test.mjs tests/page-signals.test.mjs tests/login-entry.test.mjs tests/login-intent.test.mjs tests/safety-copy.test.mjs",
+    "test": "node --test tests/core.test.mjs tests/trust.test.mjs tests/bundle.test.mjs tests/tabs.test.mjs tests/identity.test.mjs tests/recipe-run.test.mjs tests/compromise.test.mjs tests/coverage.test.mjs tests/relevance.test.mjs tests/change-password.test.mjs tests/sign-in.test.mjs tests/anon-baseline.test.mjs tests/incognito-probe.test.mjs tests/oauth-return.test.mjs tests/page-signals.test.mjs tests/login-entry.test.mjs tests/login-intent.test.mjs tests/safety-copy.test.mjs tests/recovery-handoff.test.mjs",
     "icons": "node dev/make-icons.mjs icons"
   },
   "license": "MIT",

@@ -372,7 +372,9 @@ test('every site gets the warning, with honest degradation', () => {
   assert.equal(unknown.passwordUrl, undefined, 'no password URL is invented');
   assert.equal(unknown.siteUrl, 'https://somerandomblog.net', 'the site itself is the fallback');
   assert.match(unknown.advice, /another trusted device/);
-  assert.match(unknown.advice, /MFA, recovery methods, and connected apps/);
+  for (const topic of ['MFA', 'recovery methods', 'connected apps', 'app passwords']) {
+    assert.ok(unknown.advice.includes(topic), `recovery advice must cover ${topic}`);
+  }
 });
 
 test('a verified global recipe never suppresses trusted-device recovery advice', () => {

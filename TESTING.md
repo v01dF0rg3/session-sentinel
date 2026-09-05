@@ -47,6 +47,28 @@ sessions" and a heading reading "Signed in" long after the real popup had been c
 confident wrong answers, so the copies are gone and the server rebases asset paths and
 injects the stub on the fly.
 
+### Portable recovery plan
+
+`tests/recovery-handoff.test.mjs` checks the export's explicit field allowlist, domain and
+risk validation, all-risk coverage, fresh progress, essential guidance, and large lists.
+
+The recovery preview also has fixtures; these use fictional account data, not real cookies:
+
+| Preview URL | Check |
+| --- | --- |
+| `/dev/recovery-preview.html` | Nine confirmed domains export; the low-risk confirmed domain is included even under the default high-risk filter. The Bloomberg candidate is excluded. |
+| `/dev/recovery-preview.html?recovery=empty` | Essential guidance and exports still work; no suggestion that an empty list means safety. |
+| `/dev/recovery-preview.html?recovery=error` | Visible error and retry; printing offers essentials only and text export stays disabled. |
+| `/dev/recovery-preview.html?recovery=save-error` | Failed checkbox/scope/reset writes show an error and restore the previous selection. |
+| `/dev/recovery-preview.html?recovery=large` | All 109 confirmed rows reach the printable plan; no silent truncation. |
+
+Check a row as reviewed, change scope, and start over. The portable plan must keep fresh
+unchecked boxes regardless of screen progress. Test a narrow viewport for horizontal
+overflow. Browser previews exercise the real UI with a stubbed worker, not the installed
+extension's Chrome APIs. Add `print=1` to a preview's query string to render the real print
+styles on screen. This checks visual styling only; pagination still needs Chrome's print
+preview in the installed-extension check below.
+
 ## 3. Built-in diagnostics (in Chrome, one click)
 
 Settings → **Check it works** → **Run diagnostics**, or open
@@ -142,6 +164,17 @@ Work through these in order. Each one exercises a layer that no automated test r
       failures honestly, not claim success
 - [ ] Check the service worker console (`chrome://extensions` → *service worker*) for
       unhandled errors after each of the above
+
+### I. Recovery handoff (non-destructive)
+
+- [ ] Open **Been hacked?**; essential accounts and trusted-device warnings are visible
+- [ ] With the high-risk filter selected, save a text file and confirm a known low-risk
+      confirmed account is included, while an unresolved candidate is absent
+- [ ] Check a row as reviewed, then export again; every exported checkbox is still empty
+- [ ] Open **Print / Save PDF** in installed Chrome. Inspect both A4 and Letter previews:
+      only the portable plan should print, with no clipped domains or missing final rows
+- [ ] Confirm the text/PDF has no cookie data, usernames, or security-page URLs
+- [ ] Check the printed file includes essential guidance and the limitations at its end
 
 ## What to capture if something breaks
 

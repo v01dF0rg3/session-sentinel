@@ -9,15 +9,21 @@
  * controls and keeps progress; see the clean-device warning at the top of the page.
  */
 
+import { renderPrintablePlan, renderRecoveryEssentials, saveRecoveryText } from './recovery-plan.js';
+
 /** @type {any} */
 let data = null;
+let loadRevision = 0;
 
 /**
  * @param {any} message
  * @returns {Promise<any>}
  */
-function send(message) {
-  return chrome.runtime.sendMessage(message);
+async function send(message) {
+  const response = await chrome.runtime.sendMessage(message);
+  // The worker returns an error envelope when an operation fails, not a rejected promise.
+  if (response?.error) throw new Error('The recovery request failed');
+  return response;
 }
 
 /**
@@ -31,9 +37,39 @@ function byId(id) {
 }
 
 async function load() {
-  data = await send({ type: 'getRecovery' });
-  render();
-  void discoverPasswordPages();
+  const revision = ++loadRevision;
+  setBusy(true);
+  byId('retry').hidden = true;
+  byId('load-status').textContent = 'Loading the account list…';
+  renderPrintablePlan(byId('print-plan'), null);
+  try {
+    const next = await send({ type: 'getRecovery' });
+    if (revision !== loadRevision) return;
+    if (!next || !Array.isArray(next.groups) || !next.handoff) throw new Error('Missing recovery data');
+    data = next;
+    render();
+    setBusy(false);
+    byId('load-status').textContent = '';
+    void discoverPasswordPages(next, revision);
+  } catch {
+    if (revision !== loadRevision) return;
+    data = null;
+    byId('groups').replaceChildren();
+    byId('empty').hidden = true;
+    byId('progress-headline').textContent = 'Account list unavailable';
+    byId('progress-detail').textContent = 'The essential checklist above is still available.';
+    byId('progress-bar').style.width = '0%';
+    byId('load-status').textContent = 'Could not load accounts. Try again, or use the essential checklist from a trusted device.';
+    byId('handoff-detail').textContent = 'Printing will include the essential checklist only. Account data could not be loaded.';
+    byId('retry').hidden = false;
+    // A worker failure must not stop someone taking the fixed recovery guidance away.
+    byId('print-plan-button').disabled = false;
+  }
+}
+
+function setBusy(busy) {
+  for (const id of ['scope', 'reset', 'print-plan-button', 'save-plan-button']) byId(id).disabled = busy;
+  for (const box of document.querySelectorAll('#groups input')) box.disabled = busy;
 }
 
 /**
@@ -47,16 +83,23 @@ async function load() {
  * links sharpen a moment later; making someone stare at a spinner during a break-in would
  * be a poor trade for a slightly tidier load.
  */
-async function discoverPasswordPages() {
-  const missing = data.groups
+async function discoverPasswordPages(snapshot, revision) {
+  const missing = snapshot.groups
     .flatMap((/** @type {any} */ g) => g.steps)
     .filter((/** @type {any} */ s) => !s.passwordUrl)
     .map((/** @type {any} */ s) => s.domain);
 
   if (!missing.length) return;
 
-  const found = await send({ type: 'findPasswordPages', domains: missing });
-  if (!found || !Object.keys(found).length) return;
+  let found;
+  try {
+    found = await send({ type: 'findPasswordPages', domains: missing });
+  } catch {
+    // Optional link discovery must not make the recovery checklist fail.
+    return;
+  }
+  // A slow response for a previous scope must not overwrite the user's newer selection.
+  if (revision !== loadRevision || !found || !Object.keys(found).length) return;
 
   for (const group of data.groups) {
     for (const step of group.steps) {
@@ -80,7 +123,7 @@ function render() {
 
   byId('progress-headline').textContent =
     progress.total === 0
-      ? 'Nothing to do'
+      ? 'No sites in this view'
       : progress.done === progress.total
         ? 'Checklist reviewed'
         : `${progress.done} of ${progress.total} reviewed`;
@@ -90,7 +133,7 @@ function render() {
       ? ''
       : progress.nextDomain
         ? `Next: ${progress.nextDomain}. Review its sessions and security settings, then tick it off.`
-        : 'Every account on this list has been reviewed. Recheck important session lists and security alerts for anything unfamiliar.';
+        : 'This browser list has been reviewed. Also check the essential accounts above and any accounts missing here; review does not verify revocation.';
 
   const pct = progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
   /** @type {HTMLElement} */ (byId('progress-bar')).style.width = `${pct}%`;
@@ -98,6 +141,11 @@ function render() {
   for (const group of groups) {
     container.append(renderGroup(group, new Set(state.done), progress.nextDomain));
   }
+  const count = data.handoff.accounts.length;
+  byId('handoff-detail').textContent =
+    `The plan includes ${count} confirmed account domain${count === 1 ? '' : 's'} at all risk levels. Candidates and previous ticks are excluded.` +
+    (data.handoff.excludedCount ? ` ${data.handoff.excludedCount} invalid entries were omitted.` : '');
+  renderPrintablePlan(byId('print-plan'), data.handoff);
 }
 
 /**
@@ -219,9 +267,11 @@ function renderStep(step, isDone, isNext) {
   const box = document.createElement('input');
   box.type = 'checkbox';
   box.checked = isDone;
+  box.setAttribute('aria-label', `Reviewed ${step.domain}`);
   box.addEventListener('change', async () => {
-    await send({ type: 'markRecoveryStep', domain: step.domain, done: box.checked });
-    await load();
+    if (!(await updateRecovery({ type: 'markRecoveryStep', domain: step.domain, done: box.checked }))) {
+      box.checked = isDone;
+    }
   });
   const tickText = document.createElement('span');
   tickText.textContent = 'Reviewed';
@@ -232,14 +282,41 @@ function renderStep(step, isDone, isNext) {
   return row;
 }
 
-byId('scope').addEventListener('change', async (e) => {
-  await send({ type: 'setRecoveryScope', minTier: /** @type {HTMLSelectElement} */ (e.target).value });
-  await load();
+async function updateRecovery(message) {
+  ++loadRevision; // Invalidate optional discovery before the save starts, not after it ends.
+  setBusy(true);
+  try {
+    await send(message);
+    await load();
+    return true;
+  } catch {
+    setBusy(false);
+    byId('load-status').textContent = 'Could not save that change. Please try again.';
+    if (data) byId('scope').value = data.state.minTier;
+    return false;
+  }
+}
+
+byId('scope').addEventListener('change', (e) => {
+  void updateRecovery({ type: 'setRecoveryScope', minTier: /** @type {HTMLSelectElement} */ (e.target).value });
 });
 
-byId('reset').addEventListener('click', async () => {
-  await send({ type: 'resetRecovery' });
-  await load();
+byId('reset').addEventListener('click', () => {
+  void updateRecovery({ type: 'resetRecovery' });
 });
 
-load();
+byId('print-plan-button').addEventListener('click', () => window.print());
+byId('save-plan-button').addEventListener('click', () => {
+  if (!data?.handoff) return;
+  try {
+    saveRecoveryText(data.handoff);
+    byId('export-status').textContent = 'Text file requested. Check your browser downloads.';
+  } catch {
+    byId('export-status').textContent = 'Could not create the text file. You can print the plan instead.';
+  }
+});
+byId('retry').addEventListener('click', () => void load());
+
+renderRecoveryEssentials(byId('recovery-essentials'));
+renderPrintablePlan(byId('print-plan'), null);
+void load();

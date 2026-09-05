@@ -12,7 +12,7 @@ const KEY = 'recoveryState';
 /**
  * @typedef {object} RecoveryState
  * @property {number} startedAt
- * @property {string[]} done Domains the user has marked as secured.
+ * @property {string[]} done Domains the user has marked as reviewed; not proof of revocation.
  * @property {import('../core/risk.js').RiskTier} minTier
  */
 

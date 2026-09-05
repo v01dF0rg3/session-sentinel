@@ -264,6 +264,13 @@ login alerts. Same user need, honest mechanism. Planned, not built.
 
 ## Roadmap
 
+The recovery page now provides a local text/print handoff for use on a trusted device.
+`src/core/recovery-handoff.js` builds an explicit allowlist of confirmed domains and risk
+levels, independent of screen scope. It carries neither URLs nor previous progress. Shared
+fixed guidance remains available with no detected accounts or an unavailable worker.
+This is a reminder, not an authenticated inventory: malware on the source computer could
+omit or alter it. No companion service, account sync, or server-side revocation is implied.
+
 Current state: tiers 0, 1, 3 and 4 are implemented, four curated recipes are bundled, and
 the signed update channel is tested but not pointed at a live host. Real-world sign-out
 reach is measured in Diagnostics rather than assumed from automated tests.
