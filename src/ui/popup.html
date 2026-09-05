@@ -4,86 +4,123 @@
     <meta charset="utf-8" />
     <title>Session Sentinel</title>
     <link rel="stylesheet" href="ui.css" />
+    <link rel="stylesheet" href="popup.css" />
   </head>
-  <body class="popup">
+  <body class="popup" data-view="home">
     <header class="header">
       <div class="brand">
-        <svg class="mark" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
-          <path d="M5 7.2V5a3 3 0 0 1 6 0v2.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
-          <rect x="2.7" y="7.2" width="10.6" height="7" rx="1.6" fill="currentColor" />
-          <circle cx="8" cy="10.2" r="1.15" fill="var(--bg)" />
-          <path d="M7.4 10.2h1.2l.35 2.1h-1.9z" fill="var(--bg)" />
+        <svg class="brand-art" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true" focusable="false">
+          <rect x="1" y="1" width="30" height="30" rx="10" fill="var(--art-surface)" />
+          <path d="M10 24V9l11-2v18M8 24h16" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+          <circle cx="17" cy="16" r="1.5" fill="var(--accent)" />
+          <circle cx="25" cy="7" r="3" fill="var(--art-spark)" />
         </svg>
         <h1>Session Sentinel</h1>
       </div>
-      <button id="toggle-enabled" class="ghost" type="button" title="Pause or resume all protection">
-        <span id="enabled-label">Active</span>
+      <button id="open-options" class="icon-button" type="button" aria-label="Settings" title="Settings">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6M16 14v6" /></svg>
       </button>
     </header>
 
-    <section class="current" id="current-site" hidden>
-      <div class="current-row">
-        <div class="current-info">
-          <span class="label">This site</span>
-          <strong id="current-domain"></strong>
-          <span class="badge" id="current-tier"></span>
-        </div>
-        <div class="current-actions">
-          <button id="logout-current" class="primary small" type="button">Attempt sign-out</button>
-          <button id="clear-current" class="ghost small" type="button" title="Delete cookies and storage without contacting the site">Clear data</button>
-        </div>
+    <nav class="popup-nav" role="tablist" aria-label="Popup views">
+      <button id="tab-home" type="button" role="tab" data-view="home" aria-controls="panel-home" aria-selected="true">Home</button>
+      <button id="tab-accounts" type="button" role="tab" data-view="accounts" aria-controls="panel-accounts" aria-selected="false" tabindex="-1">Accounts <span id="nav-account-count" class="nav-count">0</span></button>
+      <button id="tab-activity" type="button" role="tab" data-view="activity" aria-controls="panel-activity" aria-selected="false" tabindex="-1">Activity <span id="activity-dot" class="activity-dot" hidden aria-hidden="true"></span></button>
+    </nav>
+
+    <div id="status" class="status" tabindex="-1" hidden>
+      <span class="status-orbit" aria-hidden="true"></span>
+      <div class="status-copy" role="status" aria-live="polite" aria-atomic="true">
+        <strong id="status-text"></strong><p id="status-detail"></p>
       </div>
-      <label class="keep" id="keep-current-label" title="Excluded from every automatic cleanup and from &quot;Attempt sign-out of confirmed accounts&quot;. You can still clear it by hand with the buttons above.">
-        <input type="checkbox" id="keep-current" />
-        <span>Never clear this site — keep its local data</span>
-      </label>
-    </section>
-
-    <button id="logout-all" class="primary block" type="button">
-      Attempt sign-out of confirmed accounts
-    </button>
-    <p class="hint" id="scope-hint"></p>
-
-    <main class="popup-content">
-    <div id="status" class="status" role="status" aria-live="polite" tabindex="-1" hidden></div>
-
-    <details id="run-evidence" class="run-evidence" hidden>
-      <summary id="run-evidence-title">Last cleanup: evidence and next steps</summary>
-      <p class="hint">Local results concern this Chrome profile only. Copied tokens, other devices,
-        unseen storage-only origins, and data held in open tabs are not verified safe.</p>
-      <div id="run-evidence-sites" class="run-evidence-sites"></div>
-    </details>
-
-    <div id="crash-report" class="status red" hidden>
-      <strong>The previous cleanup did not finish.</strong>
-      <span id="crash-detail"></span>
-      <button id="crash-dismiss" class="link" type="button" style="margin-top:6px">Dismiss</button>
+      <button id="status-view" class="link" type="button" hidden>Details</button>
+      <button id="status-dismiss" class="icon-button" type="button" aria-label="Dismiss message" hidden>×</button>
     </div>
 
-    <section class="sites">
-      <div class="sites-head">
-        <h2>Confirmed accounts</h2>
-        <span id="site-count" class="count"></span>
-      </div>
-      <input
-        id="site-filter"
-        class="filter"
-        type="search"
-        placeholder="Filter sites…"
-        aria-label="Filter confirmed accounts and other discovered sites"
-        autocomplete="off"
-      />
-      <ul id="site-list" class="site-list" aria-label="Confirmed and possible accounts"></ul>
-      <div id="list-actions" class="list-actions"></div>
-    </section>
+    <main class="popup-content">
+      <section id="panel-home" class="popup-panel" role="tabpanel" tabindex="0" aria-labelledby="tab-home">
+        <div class="home-intro">
+          <div><p class="eyebrow">A little less left open</p><h2>Ready to<br>wrap up?</h2></div>
+          <svg class="session-art" viewBox="0 0 112 96" width="112" height="96" aria-hidden="true" focusable="false">
+            <ellipse class="art-halo" cx="59" cy="49" rx="44" ry="38" fill="var(--art-surface)" />
+            <ellipse cx="57" cy="81" rx="34" ry="4" fill="var(--art-shadow)" />
+            <path d="M31 76V23l39-8v66" fill="var(--art-door)" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" />
+            <path class="art-door" d="M31 23l25 7v57l-25-11z" fill="var(--bg)" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" />
+            <circle cx="49" cy="57" r="2.5" fill="var(--accent)" />
+            <path class="art-arrow" d="M68 48h27m-8-8 8 8-8 8" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+            <path class="art-spark" d="M83 14v10m-5-5h10" stroke="var(--art-spark)" stroke-width="2" stroke-linecap="round" />
+            <circle cx="18" cy="48" r="3" fill="var(--art-spark)" />
+            <circle cx="91" cy="72" r="2" fill="var(--accent)" opacity=".45" />
+          </svg>
+        </div>
+
+        <div class="quick-action">
+          <button id="logout-all" class="primary block" type="button" aria-describedby="home-scope home-action-note" disabled>
+            <span id="logout-all-label">Sign out of all confirmed accounts</span>
+            <svg class="action-arrow" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 12h16m-6-6 6 6-6 6" /></svg>
+          </button>
+          <p id="home-scope">Finding confirmed accounts…</p>
+          <p id="home-action-note">Tries site sign-out, then clears local session data.</p>
+        </div>
+
+        <section class="current" id="current-site" hidden>
+          <div class="current-row">
+            <div class="current-info"><span class="label">Current site</span><strong id="current-domain"></strong></div>
+            <button id="logout-current" class="ghost small" type="button" title="Attempts site sign-out. Linked sign-in sites may also be included. Review Activity for the actual scope.">Sign out site</button>
+          </div>
+          <details id="current-options">
+            <summary>Site options <span id="current-kept" hidden>· kept</span></summary>
+            <div class="site-options-body">
+              <div class="current-options-row"><span>Cleanup priority</span><span class="badge" id="current-tier"></span></div>
+              <label class="keep" id="keep-current-label" title="Skipped by automatic and bulk account cleanup. Explicit site actions can still clear it.">
+                <input type="checkbox" id="keep-current"><span>Keep this site's local data</span>
+              </label>
+              <button id="clear-current" class="ghost small" type="button" title="Delete cookies and storage without contacting the site">Clear local data only</button>
+            </div>
+          </details>
+        </section>
+        <p id="no-current" class="no-current" hidden>Open a website to use the single-site tools.</p>
+        <button id="activity-preview" class="activity-preview" type="button"><span>Last activity</span><span id="activity-preview-text">No runs yet <span aria-hidden="true">↗</span></span></button>
+        <p class="home-limit">Other sessions or stolen tokens may still work.<br>Use recovery help if you suspect a compromise.</p>
+      </section>
+
+      <section id="panel-accounts" class="popup-panel" role="tabpanel" tabindex="0" aria-labelledby="tab-accounts" hidden>
+        <div class="panel-heading"><h2>Your accounts</h2><p>Explore only as much as you need.</p></div>
+        <div id="list-actions" class="account-filters" role="group" aria-label="Account categories">
+          <button type="button" data-category="confirmed" aria-pressed="true">Confirmed <span id="count-confirmed">0</span></button>
+          <button type="button" data-category="candidates" aria-pressed="false">Candidates <span id="count-candidates">0</span></button>
+          <button type="button" data-category="other" aria-pressed="false">Other sites <span id="count-other">0</span></button>
+        </div>
+        <p id="account-help" class="account-help"></p>
+        <input id="site-filter" class="filter" type="search" placeholder="Find an account…" aria-label="Search the selected account category" autocomplete="off">
+        <section class="sites">
+          <div class="sites-head"><h3 id="list-title">Confirmed accounts</h3><span id="site-count" class="count"></span></div>
+          <ul id="site-list" class="site-list" aria-label="Confirmed accounts"></ul>
+        </section>
+      </section>
+
+      <section id="panel-activity" class="popup-panel" role="tabpanel" tabindex="0" aria-labelledby="tab-activity" hidden>
+        <div class="panel-heading"><h2>What happened</h2><p id="last-run">No runs yet.</p></div>
+        <p class="hint" id="scope-hint"></p>
+        <p id="run-message" class="run-message" hidden></p>
+        <div id="crash-report" class="status red" hidden>
+          <strong>The previous cleanup did not finish.</strong><span id="crash-detail"></span>
+          <button id="crash-dismiss" class="link" type="button">Dismiss notice</button>
+        </div>
+        <details id="run-evidence" class="run-evidence" hidden>
+          <summary id="run-evidence-title">Last cleanup: evidence and next steps</summary>
+          <p class="hint">Local results concern this Chrome profile only. Copied tokens, other devices,
+            unseen storage-only origins, and data held in open tabs are not verified safe.</p>
+          <div id="run-evidence-sites" class="run-evidence-sites"></div>
+        </details>
+        <div id="revoke-guidance"></div>
+        <div id="activity-empty" class="activity-empty"><span aria-hidden="true">◌</span><strong>A fresh start</strong><p>Your cleanup results will appear here,<br>with the details when you need them.</p></div>
+      </section>
     </main>
 
     <footer class="footer">
-      <span id="last-run" class="muted"></span>
-      <span class="footer-links">
-        <button id="open-recovery" class="link" type="button" title="Open the recovery checklist. Use another trusted device if malware may be active here.">Been hacked?</button>
-        <button id="open-options" class="link" type="button">Settings</button>
-      </span>
+      <button id="toggle-enabled" class="automation-toggle" type="button" disabled><span class="automation-dot" aria-hidden="true"></span><span id="enabled-label">Loading…</span></button>
+      <button id="open-recovery" class="link" type="button" title="Open the recovery checklist. Use another trusted device if malware may be active here.">Recovery help <span aria-hidden="true">↗</span></button>
     </footer>
 
     <dialog id="signout-dialog" class="signout-dialog" aria-labelledby="signout-title signout-domain" aria-describedby="signout-pending signout-warning">
@@ -94,7 +131,7 @@
       </div>
       <div class="signout-dialog-body">
         <p>This attempts the site's sign-out, then clears its local session data in this Chrome profile.
-          It does not verify that a stolen token stops working.</p>
+          Linked sign-in sites may also be included. It does not verify that a stolen token stops working.</p>
         <p id="signout-warning" class="signout-warning"><strong>Think you've been hacked?</strong>
           If malware may be active, stop and use another trusted device for recovery.</p>
         <details id="signout-details">

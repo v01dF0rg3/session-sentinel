@@ -3,19 +3,40 @@
  * local observations never imply remote token revocation.
  */
 
-import { localEvidenceText, outcomeColor, summarize } from '../engine/report.js';
+import { localEvidenceText, summarize } from '../engine/report.js';
 import { compromiseAdviceFor } from '../core/session-pages.js';
 import { atLeast } from '../core/risk.js';
 import { groupByTier } from '../core/relevance.js';
 import { createSignoutPrompt } from './signout-prompt.js';
+import { accountGroups, automationState, compactResult, createPopupTabs } from './popup-view.js';
 
 /** @type {any} */
 let overview = null;
 let actionInProgress = false;
+let displayedReport = null;
+let runningPoll = null;
+let observedRunning = false;
 
 const el = {
   content: document.querySelector('.popup-content'),
   status: /** @type {HTMLElement} */ (document.getElementById('status')),
+  statusText: document.getElementById('status-text'),
+  statusDetail: document.getElementById('status-detail'),
+  statusView: document.getElementById('status-view'),
+  statusDismiss: document.getElementById('status-dismiss'),
+  runMessage: document.getElementById('run-message'),
+  revokeGuidance: document.getElementById('revoke-guidance'),
+  activityEmpty: document.getElementById('activity-empty'),
+  activityPreview: document.getElementById('activity-preview'),
+  activityPreviewText: document.getElementById('activity-preview-text'),
+  activityDot: document.getElementById('activity-dot'),
+  navAccountCount: document.getElementById('nav-account-count'),
+  homeScope: document.getElementById('home-scope'),
+  listTitle: document.getElementById('list-title'),
+  accountHelp: document.getElementById('account-help'),
+  noCurrent: document.getElementById('no-current'),
+  currentKept: document.getElementById('current-kept'),
+  logoutAllLabel: document.getElementById('logout-all-label'),
   runEvidence: document.getElementById('run-evidence'),
   runEvidenceTitle: document.getElementById('run-evidence-title'),
   runEvidenceSites: document.getElementById('run-evidence-sites'),
@@ -44,11 +65,8 @@ const el = {
 /** Current text in the filter box. Kept out of `overview` so re-renders preserve it. */
 let filterText = '';
 
-/** Is the long tail of unrecognised sites expanded? Also survives re-renders. */
-let showOther = false;
-
-/** Are unanswered account candidates expanded? Kept separate from confirmed accounts. */
-let showQuestions = false;
+let accountCategory = 'confirmed';
+const tabs = createPopupTabs(document.body);
 
 const signoutPrompt = createSignoutPrompt(document.getElementById('signout-dialog'), {
   onConfirm: (domain) => act(`Attempting sign-out of ${domain}...`, { type: 'runSite', domain }),
@@ -78,55 +96,93 @@ function send(message) {
 
 /**
  * @param {string} text
- * @param {'green' | 'amber' | 'red' | 'busy'} tone
+ * @param {'neutral' | 'amber' | 'red' | 'busy'} tone
  */
-function setStatus(text, tone) {
+function setStatus(text, tone, detail = '', hasDetails = false) {
   el.status.hidden = false;
   el.status.className = `status ${tone}`;
-  el.status.textContent = text;
+  el.statusText.textContent = text;
+  el.statusDetail.textContent = detail;
+  el.statusDetail.hidden = !detail;
+  el.statusView.hidden = !hasDetails;
+  el.statusDismiss.hidden = tone === 'busy';
 }
 
 function revealStatus() {
-  el.content.scrollTop = 0;
   el.status.focus({ preventScroll: true });
 }
 
 async function load() {
-  overview = await send({ type: 'getOverview' });
-  render();
+  clearTimeout(runningPoll);
+  try {
+    overview = await send({ type: 'getOverview' });
+    render();
+    if (overview.error) return false;
+    if (overview.runInProgress && !actionInProgress) {
+      observedRunning = true;
+      const result = compactResult(displayedReport, true);
+      setStatus(result.title, result.tone, result.detail, true);
+      // Only while an already-running cleanup is visible. Closing the popup ends polling.
+      runningPoll = setTimeout(load, 1200);
+    } else if (observedRunning && !actionInProgress) {
+      observedRunning = false;
+      showResult(displayedReport);
+    }
+    return true;
+  } catch (error) {
+    showOverviewError(`Could not read the account list: ${error instanceof Error ? error.message : String(error)}`);
+    return false;
+  }
+}
+
+function showOverviewError(message) {
+  setStatus(message, 'red', 'Reopen the popup to try again.');
+  setBusy(true);
+  document.body.dataset.working = 'false';
+  el.logoutAllLabel.textContent = 'Unavailable';
+  el.logoutAll.setAttribute('aria-busy', 'false');
+  el.homeScope.textContent = 'Account list unavailable.';
+  el.navAccountCount.textContent = '—';
+  el.enabledLabel.textContent = 'Automation unknown';
+  el.toggleEnabled.disabled = true;
 }
 
 function render() {
   if (!overview) return;
-  if (overview.error) { setStatus(overview.error, 'red'); setBusy(true); return; }
+  if (overview.error) {
+    showOverviewError(overview.error);
+    return;
+  }
   const { settings, sites, currentDomain, lastReport, crashTrail } = overview;
 
   renderCrashReport(overview.runInProgress ? null : crashTrail);
-  renderRunEvidence(lastReport);
+  if (!displayedReport || (lastReport && lastReport.startedAt >= displayedReport.startedAt)) displayedReport = lastReport;
+  renderRunEvidence(displayedReport);
+  renderRevokeGuidance(displayedReport);
+  el.runMessage.hidden = !displayedReport;
+  el.runMessage.textContent = displayedReport ? describe(displayedReport) : '';
+  el.activityEmpty.hidden = !!displayedReport || !!crashTrail;
 
-  el.enabledLabel.textContent = settings.enabled ? 'Active' : 'Paused';
+  const automation = automationState(settings);
+  el.enabledLabel.textContent = automation.label;
+  el.toggleEnabled.dataset.state = automation.state;
+  el.toggleEnabled.title = automation.hint;
+  el.toggleEnabled.disabled = false;
   if (chrome.extension?.inIncognitoContext) {
     setStatus('This list concerns the normal Chrome profile. Use a normal window for account cleanup; Incognito sessions are not covered.', 'amber');
   }
 
-  const confirmedDomains = new Set(overview.relevance?.confirmed ?? []);
-  const confirmedSites = sites.filter((/** @type {any} */ s) => confirmedDomains.has(s.domain));
+  const groups = accountGroups(sites, overview.relevance);
+  const confirmedSites = groups.confirmed;
   const runnable = confirmedSites.filter((/** @type {any} */ s) => s.mode !== 'ignored');
   const critical = runnable.filter((/** @type {any} */ s) => s.tier === 'critical').length;
   const high = runnable.filter((/** @type {any} */ s) => s.tier === 'high').length;
   const kept = confirmedSites.length - runnable.length;
-  // "225 sites" under a heading reading SIGNED IN was the claim that started this: most of
-  // those had set a cookie while the user read a page. The shown count leads because it is
-  // the honest one; the total stays visible so anonymous-cookie candidates are not hidden.
-  const shown = overview.relevance?.confirmed?.length ?? overview.relevance?.used?.length ?? sites.length;
-  el.logoutAll.disabled = !settings.enabled || runnable.length === 0 || overview.runInProgress;
-  el.siteCount.textContent =
-    shown === sites.length ? `${sites.length} confirmed` : `${shown} confirmed`;
-  el.siteCount.title =
-    shown === sites.length
-      ? ''
-      : `${shown} confirmed accounts. ${overview.relevance?.questionCount ?? 0} possible pre-existing accounts stay out until a site verifies its login. Other cookied sites are not included in the account button.`;
-  el.filter.hidden = sites.length < 8;
+  el.navAccountCount.textContent = String(confirmedSites.length);
+  el.homeScope.textContent = runnable.length
+    ? `${runnable.length} confirmed account${runnable.length === 1 ? '' : 's'}${kept ? ` · ${kept} kept` : ' · this profile'}`
+    : kept ? 'Your confirmed accounts are marked Keep.' : 'No confirmed accounts yet. Explore Accounts to start.';
+  for (const [category, list] of Object.entries(groups)) document.getElementById(`count-${category}`).textContent = String(list.length);
 
   if (!runnable.length) {
     el.scopeHint.textContent = kept
@@ -148,19 +204,28 @@ function render() {
     el.currentTier.textContent = tier;
     el.currentTier.className = `badge ${tier}`;
     el.keepCurrent.checked = current?.mode === 'ignored';
+    el.currentKept.hidden = current?.mode !== 'ignored';
   } else {
     el.current.hidden = true;
   }
+  el.noCurrent.hidden = !!currentDomain;
 
-  renderSiteList(sites, overview.relevance);
+  renderSiteList(groups);
 
-  if (lastReport?.sites?.length) {
-    const when = new Date(lastReport.finishedAt);
-    el.lastRun.textContent = `${lastReport.status === 'running' ? 'Latest checkpoint' : 'Last run'} ${when.toLocaleTimeString()} - ${summarize(lastReport)}`;
+  const result = compactResult(displayedReport, overview.runInProgress || actionInProgress);
+  const attention = result.tone === 'red' || !!crashTrail;
+  el.activityPreviewText.textContent = `${crashTrail && !overview.runInProgress ? 'Cleanup interrupted' : result.title} ↗`;
+  el.activityPreview.dataset.attention = String(attention);
+  el.activityDot.hidden = !attention && !overview.runInProgress && !actionInProgress;
+  document.getElementById('tab-activity').setAttribute('aria-label', attention ? 'Activity, needs attention' : 'Activity');
+  if (displayedReport) {
+    const when = new Date(displayedReport.finishedAt ?? displayedReport.startedAt);
+    el.lastRun.textContent = `${displayedReport.status === 'running' ? 'Latest checkpoint' : 'Last run'} · ${when.toLocaleTimeString()}`;
   } else {
     el.lastRun.textContent = 'No runs yet.';
   }
-  if (actionInProgress || overview.runInProgress) setBusy(true);
+  setBusy(actionInProgress || overview.runInProgress === true);
+  el.logoutAll.disabled ||= !settings.enabled || runnable.length === 0;
 }
 
 /**
@@ -171,76 +236,31 @@ function render() {
  * the difference between evidence and a wall of guesses. The bulk account action uses only
  * the confirmed set; scheduled cleanup may use the broader safety set.
  *
- * A filter escapes the split entirely — someone typing a domain is looking for that
- * domain, and finding nothing because it sat behind a disclosure would be maddening.
+ * Search stays within the explicitly selected category. Visitor-cookie sites must not
+ * become "confirmed" merely because someone searched for them.
  *
- * @param {any[]} sites
- * @param {any} relevance
+ * @param {{confirmed: any[], candidates: any[], other: any[]}} groups
  */
-function renderSiteList(sites, relevance) {
+function renderSiteList(groups) {
   el.siteList.replaceChildren();
-  el.listActions.replaceChildren();
-
-  if (sites.length === 0) {
-    el.siteList.append(emptyRow('No sites with session-looking cookies found.'));
-    return;
-  }
-
+  const labels = { confirmed: 'Confirmed accounts', candidates: 'Pre-existing account candidates', other: 'Other cookied sites' };
+  const notes = {
+    confirmed: 'Positive login evidence was found for these sites. Keep excludes a site from bulk and automatic cleanup.',
+    candidates: 'Not confirmed. Login opens the site so you can sign in or verify an existing login. Visitor cookies alone are not proof.',
+    other: 'Cookies were found, not confirmed accounts. These are excluded from the account button; scheduled safety cleanup may still include them.'
+  };
+  el.listTitle.textContent = labels[accountCategory];
+  el.accountHelp.textContent = notes[accountCategory];
+  el.siteList.setAttribute('aria-label', labels[accountCategory]);
+  el.filter.placeholder = `Search ${accountCategory === 'other' ? 'other sites' : accountCategory}…`;
+  for (const button of el.listActions.querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset.category === accountCategory));
   const needle = filterText.trim().toLowerCase();
-  if (needle) {
-    const matches = sites.filter((s) => s.domain.includes(needle));
-    if (!matches.length) {
-      el.siteList.append(emptyRow(`No sites match "${filterText}".`));
-      return;
-    }
-    for (const site of matches) el.siteList.append(buildSiteRow(site));
-    return;
-  }
-
-  const usedSet = new Set(relevance?.used ?? sites.map((s) => s.domain));
-  const configuredSet = new Set(relevance?.configured ?? []);
-  const questionSet = new Set(relevance?.questions ?? []);
-  const used = sites.filter((s) => usedSet.has(s.domain));
-  const configured = sites.filter((s) => !usedSet.has(s.domain) && configuredSet.has(s.domain));
-  const questions = sites.filter((s) => !usedSet.has(s.domain) && !configuredSet.has(s.domain) && questionSet.has(s.domain));
-  const other = sites.filter((s) => !usedSet.has(s.domain) && !configuredSet.has(s.domain) && !questionSet.has(s.domain));
-
-  if (!used.length) {
-    el.siteList.append(emptyRow('No confirmed accounts yet. Use Login below to verify one.'));
-  }
-
-  for (const group of groupByTier(used)) {
+  const matches = groups[accountCategory].filter((site) => site.domain.includes(needle));
+  el.siteCount.textContent = `${matches.length} ${accountCategory === 'confirmed' ? 'confirmed' : 'sites'}`;
+  if (!matches.length) el.siteList.append(emptyRow(needle ? `No matches in ${accountCategory}.` : accountCategory === 'confirmed' ? 'No confirmed accounts yet. Open Candidates to check an existing login.' : 'Nothing in this category right now.'));
+  for (const group of groupByTier(matches)) {
     el.siteList.append(tierHeading(group.tier, group.sites.length));
-    for (const site of group.sites) el.siteList.append(buildSiteRow(site));
-  }
-
-  if (configured.length) {
-    el.siteList.append(listHeading('Kept sites', configured.length));
-    for (const site of configured) el.siteList.append(buildSiteRow(site));
-  }
-
-  // The two routes into everything else live BELOW the scrolling list, not inside it.
-  // Placed there they sat under whatever happened to be the last confirmed account and
-  // were simply never seen, so a profile with two hundred cookied domains looked like a
-  // profile with four. A control that reveals the rest is worthless if it is itself hidden.
-  if (questions.length) {
-    el.listActions.append(questionDisclosureRow(questions.length));
-    if (showQuestions) {
-      el.siteList.append(reviewInstructionRow());
-      for (const group of groupByTier(questions)) {
-        el.siteList.append(tierHeading(group.tier, group.sites.length));
-        for (const site of group.sites) el.siteList.append(buildSiteRow(site));
-      }
-    }
-  }
-
-  if (!other.length) return;
-  el.listActions.append(otherDisclosureRow(other.length));
-  if (!showOther) return;
-
-  for (const group of groupByTier(other)) {
-    el.siteList.append(tierHeading(group.tier, group.sites.length));
-    for (const site of group.sites) el.siteList.append(buildSiteRow(site));
+    for (const site of group.sites) el.siteList.append(buildSiteRow(site, accountCategory === 'candidates'));
   }
 }
 
@@ -269,91 +289,14 @@ function tierHeading(tier, count) {
   return row;
 }
 
-/**
- * The control that reveals the long tail.
- *
- * It states the count rather than saying "more", because the number is itself the honest
- * part: that a profile carries two hundred other cookied domains is information, and a
- * vague word would hide how much session-like state the browser is carrying.
- *
- * @param {number} count
- */
-function otherDisclosureRow(count) {
-  const row = document.createElement('li');
-  row.className = 'disclosure';
-
-  const button = document.createElement('button');
-  button.className = 'link';
-  button.type = 'button';
-  button.textContent = showOther
-    ? 'Hide other sites'
-    : `Show ${count} other cookied site${count === 1 ? '' : 's'}`;
-  button.title =
-    'Sites you have cookies for but no confirmed login. Scheduled safety wipes may still clear them.';
-  button.addEventListener('click', () => {
-    showOther = !showOther;
-    render();
-  });
-
-  row.append(button);
-  return row;
-}
-
-/**
- * @param {string} label
- * @param {number} count
- */
-function listHeading(label, count) {
-  const row = document.createElement('li');
-  row.className = 'group-heading';
-  row.setAttribute('role', 'presentation');
-  row.textContent = label;
-
-  const n = document.createElement('span');
-  n.className = 'count';
-  n.textContent = String(count);
-  row.append(n);
-  return row;
-}
-
-/** @param {number} count */
-function questionDisclosureRow(count) {
-  const row = document.createElement('li');
-  row.className = 'disclosure';
-
-  const button = document.createElement('button');
-  button.className = 'link';
-  button.type = 'button';
-  button.textContent = showQuestions
-    ? 'Hide pre-existing account candidates'
-    : `Log in to pre-existing accounts (${count} candidate${count === 1 ? '' : 's'})`;
-  button.title =
-    'These sites have session-looking cookies, but Chrome cannot tell whether the session belongs to an account. Login opens the site so it can verify the session.';
-  button.addEventListener('click', () => {
-    showQuestions = !showQuestions;
-    render();
-  });
-
-  row.append(button);
-  return row;
-}
-
-function reviewInstructionRow() {
-  const row = document.createElement('li');
-  row.className = 'review-note';
-  row.textContent =
-    'Login opens the site. If it already shows you signed in—or after you sign in—it moves to Confirmed accounts.';
-  return row;
-}
-
-/** @param {any} site */
-function buildSiteRow(site) {
+/** @param {any} site @param {boolean} needsConfirmation */
+function buildSiteRow(site, needsConfirmation) {
   const row = document.createElement('li');
   if (site.mode === 'ignored') row.classList.add('kept');
 
   const badge = document.createElement('span');
   badge.className = `badge ${site.tier}`;
-  badge.textContent = site.tier;
+  badge.textContent = `${site.tier} priority${site.mode === 'ignored' ? ' · kept' : ''}`;
   badge.title = site.tierReason;
 
   const name = document.createElement('span');
@@ -362,7 +305,7 @@ function buildSiteRow(site) {
   // The strongest reason leads. "not confirmed yet" is deliberately not phrased as a
   // claim: saying "you are signed in here" about a site the user has no account on is the
   // complaint this whole mechanism exists to answer.
-  if (site.needsConfirmation && site.mode !== 'ignored') {
+  if (needsConfirmation) {
     name.title = 'Its cookies could belong to an account or an anonymous visitor. Login opens the site so the site itself can settle it.';
   } else if (site.reasons?.length) {
     const [reason] = site.reasons;
@@ -376,24 +319,27 @@ function buildSiteRow(site) {
 
   const logout = document.createElement('button');
   logout.className = 'ghost small reveal';
-  logout.textContent = 'Attempt sign-out';
+  logout.textContent = 'Try sign-out';
   logout.type = 'button';
   logout.dataset.signoutDomain = site.domain;
   logout.setAttribute('aria-label', `Attempt sign-out of ${site.domain}`);
-  logout.disabled = actionInProgress || overview?.runInProgress === true;
+  logout.disabled = actionInProgress || overview?.runInProgress === true || overview?.settings?.enabled === false;
   logout.addEventListener('click', () => {
     if (maybePromptCompromise(site.domain, site.tier, logout)) return;
     act(`Attempting sign-out of ${site.domain}...`, { type: 'runSite', domain: site.domain });
   });
 
   // A site nothing could settle gets a real login route instead of another cookie guess.
-  if (site.needsConfirmation && site.mode !== 'ignored') {
+  if (needsConfirmation) {
     actions.append(buildCandidateControl(site.domain));
   } else {
     actions.append(logout, buildKeepControl(site.domain, site.mode === 'ignored', 'Keep'));
   }
 
-  row.append(badge, name, actions);
+  const identity = document.createElement('div');
+  identity.className = 'site-identity';
+  identity.append(name, badge);
+  row.append(identity, actions);
   return row;
 }
 
@@ -414,11 +360,18 @@ function buildCandidateControl(domain) {
   login.title = `Open ${domain} and verify or complete its login`;
   login.addEventListener('click', async () => {
     login.disabled = true;
+    login.textContent = 'Opening…';
     setStatus(`Opening ${domain} login...`, 'busy');
-    const result = await send({ type: 'openLogin', domain });
-    if (result?.error) {
+    revealStatus();
+    try {
+      const result = await send({ type: 'openLogin', domain });
+      if (result?.error) throw new Error(result.error);
+      setStatus('Login page opened', 'neutral', 'Finish signing in there, then reopen the popup. Opening a page does not confirm an account.');
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error), 'red');
+    } finally {
       login.disabled = false;
-      setStatus(result.error, 'red');
+      login.textContent = 'Login';
     }
   });
 
@@ -427,9 +380,18 @@ function buildCandidateControl(domain) {
   dismiss.textContent = 'Not mine';
   dismiss.title = 'Remove this candidate. Scheduled safety wipes may still clear it.';
   dismiss.addEventListener('click', async () => {
-    await send({ type: 'setSiteVerdict', domain, verdict: 'notMine' });
-    overview = await send({ type: 'getOverview' });
-    render();
+    dismiss.disabled = true;
+    dismiss.textContent = 'Removing…';
+    try {
+      const result = await send({ type: 'setSiteVerdict', domain, verdict: 'notMine' });
+      if (result?.error) throw new Error(result.error);
+      if (await load()) setStatus('Candidate dismissed', 'neutral', 'No site data was cleared. Scheduled safety cleanup rules still apply.');
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error), 'red');
+    } finally {
+      dismiss.disabled = false;
+      dismiss.textContent = 'Not mine';
+    }
   });
 
   wrap.append(login, dismiss);
@@ -438,13 +400,12 @@ function buildCandidateControl(domain) {
 }
 
 function renderRunEvidence(report) {
-  el.runEvidence.hidden = !report || (!report.sites?.length && !report.pending?.length);
+  el.runEvidence.hidden = !report || (!report.sites?.length && !report.pending?.length && !report.skipped?.length);
   if (el.runEvidence.hidden) return;
   el.runEvidenceTitle.textContent = report.status === 'running'
     ? `${overview.runInProgress ? 'Cleanup in progress' : 'Cleanup interrupted'}: ${report.pending?.length ?? 0} site(s) unfinished`
     : `Last cleanup: ${summarize(report)}`;
   el.runEvidenceSites.replaceChildren();
-  if (report.status === 'running' && !overview.runInProgress) el.runEvidence.open = true;
   for (const site of report.sites ?? []) {
     const item = document.createElement('div');
     item.className = 'run-evidence-item';
@@ -464,6 +425,12 @@ function renderRunEvidence(report) {
     pending.className = 'evidence-warning';
     pending.textContent = `${domain}: unfinished; no completed result was recorded.`;
     el.runEvidenceSites.append(pending);
+  }
+  for (const site of report.skipped ?? []) {
+    const skipped = document.createElement('p');
+    skipped.className = 'hint';
+    skipped.textContent = `${site.domain ?? 'Cleanup'}: skipped — ${site.why}`;
+    el.runEvidenceSites.append(skipped);
   }
 }
 
@@ -492,7 +459,7 @@ function renderCrashReport(crashTrail) {
  * The "leave this site alone" control, used both per row and for the current site.
  *
  * Checked means the site is excluded from every automatic trigger AND from
- * "Attempt sign-out of confirmed accounts" - the whole point is that it survives the big button.
+ * "Sign out of all confirmed accounts" - the whole point is that it survives the big button.
  * Explicit per-site actions still reach it, so the user is never locked out of clearing
  * a site they deliberately chose to keep.
  *
@@ -504,18 +471,24 @@ function renderCrashReport(crashTrail) {
 function buildKeepControl(domain, kept, labelText) {
   const label = document.createElement('label');
   label.className = 'keep';
-  label.title = `Never clear ${domain} automatically. It will be skipped by scheduled cleanup and by "Attempt sign-out of confirmed accounts".`;
+  label.title = `Never clear ${domain} automatically. It will be skipped by scheduled cleanup and by "Sign out of all confirmed accounts".`;
 
   const box = document.createElement('input');
   box.type = 'checkbox';
   box.checked = kept;
   box.addEventListener('change', async () => {
-    await send({
-      type: 'setSiteOverride',
-      domain,
-      override: box.checked ? { mode: 'ignored' } : null
-    });
-    await load();
+    box.disabled = true;
+    const checked = box.checked;
+    try {
+      const result = await send({ type: 'setSiteOverride', domain, override: checked ? { mode: 'ignored' } : null });
+      if (result?.error) throw new Error(result.error);
+      if (await load()) setStatus(checked ? `${domain} is kept` : `${domain} is no longer kept`, 'neutral', checked ? 'Skipped by bulk and automatic cleanup. You can still act on it directly.' : 'Your configured cleanup rules apply again.');
+    } catch (error) {
+      box.checked = !checked;
+      setStatus(`Could not save Keep: ${error instanceof Error ? error.message : String(error)}`, 'red');
+    } finally {
+      box.disabled = false;
+    }
   });
 
   const text = document.createElement('span');
@@ -530,7 +503,7 @@ function buildKeepControl(domain, kept, labelText) {
  * @param {any} message
  */
 async function act(busyText, message) {
-  if (actionInProgress || overview?.runInProgress) return;
+  if (actionInProgress || overview?.runInProgress || overview?.settings?.enabled === false) return;
   actionInProgress = true;
   setStatus(busyText, 'busy');
   revealStatus();
@@ -540,11 +513,12 @@ async function act(busyText, message) {
     if (report?.error) {
       setStatus(report.error, 'red');
     } else {
-      const worst = worstColor(report);
-      setStatus(describe(report), worst);
+      displayedReport = report;
+      showResult(report);
       renderRevokeGuidance(report);
       renderRunEvidence(report);
-      el.runEvidence.open = true;
+      // Keep the full report on Activity. Finishing is not a reason to flood Home.
+      el.runEvidence.open = false;
     }
   } catch (error) {
     setStatus(error instanceof Error ? error.message : String(error), 'red');
@@ -557,21 +531,18 @@ async function act(busyText, message) {
     actionInProgress = false;
     setBusy(false);
     render();
-    // Keep feedback visible if the user stayed with the action. Do not steal focus
-    // or scroll position if they moved elsewhere while the worker was running.
-    if (document.activeElement === el.status) el.content.scrollTop = 0;
+    if (overview?.runInProgress) {
+      observedRunning = true;
+      clearTimeout(runningPoll);
+      runningPoll = setTimeout(load, 1200);
+    }
+    // The feedback card sits outside the panels: no scroll or focus jump on completion.
   }
 }
 
-/**
- * @param {any} report
- * @returns {'green' | 'amber' | 'red'}
- */
-function worstColor(report) {
-  const colors = (report?.sites ?? []).map((/** @type {any} */ s) => outcomeColor(s.outcome));
-  if (colors.includes('red')) return 'red';
-  if (colors.includes('amber')) return 'amber';
-  return colors.length ? 'green' : 'amber';
+function showResult(report) {
+  const result = compactResult(report);
+  setStatus(result.title, result.tone, result.detail, true);
 }
 
 /**
@@ -587,7 +558,7 @@ function worstColor(report) {
  * @returns {boolean} true if a prompt was shown and the logout should wait
  */
 function maybePromptCompromise(domain, tier, opener) {
-  if (actionInProgress || overview?.runInProgress) return true;
+  if (actionInProgress || overview?.runInProgress || overview?.settings?.enabled === false) return true;
   const setting = overview?.settings?.compromisePrompt ?? 'high';
   if (setting === 'never') return false;
   if (setting === 'high' && !atLeast(/** @type {any} */ (tier), 'high')) return false;
@@ -625,7 +596,8 @@ function describe(report) {
  * @param {any} report
  */
 function renderRevokeGuidance(report) {
-  const sites = (report?.sites ?? []).filter((/** @type {any} */ s) => s.revokeGuidance).slice(0, 6);
+  el.revokeGuidance.replaceChildren();
+  const sites = (report?.sites ?? []).filter((/** @type {any} */ s) => s.revokeGuidance);
   if (sites.length === 0) return;
 
   const wrap = document.createElement('div');
@@ -654,17 +626,20 @@ function renderRevokeGuidance(report) {
     wrap.append(block);
   }
 
-  el.status.append(wrap);
+  el.revokeGuidance.append(wrap);
 }
 
 /** @param {boolean} busy */
 function setBusy(busy) {
+  document.body.dataset.working = String(busy);
+  el.logoutAllLabel.textContent = busy ? 'Working…' : 'Sign out of all confirmed accounts';
+  el.logoutAll.setAttribute('aria-busy', String(busy));
   for (const button of [el.logoutAll, el.logoutCurrent, el.clearCurrent, ...el.siteList.querySelectorAll('[data-signout-domain]')]) {
-    button.disabled = busy;
+    button.disabled = busy || overview?.settings?.enabled === false;
   }
 }
 
-el.logoutAll.addEventListener('click', () => act('Attempting site sign-out and clearing local sessions...', { type: 'runNow' }));
+el.logoutAll.addEventListener('click', () => act('Attempting sign-out of all confirmed accounts...', { type: 'runNow' }));
 
 el.logoutCurrent.addEventListener('click', () => {
   const domain = overview?.currentDomain;
@@ -681,18 +656,36 @@ el.clearCurrent.addEventListener('click', () => {
 
 el.keepCurrent.addEventListener('change', async () => {
   if (!overview?.currentDomain) return;
-  await send({
-    type: 'setSiteOverride',
-    domain: overview.currentDomain,
-    override: el.keepCurrent.checked ? { mode: 'ignored' } : null
-  });
-  await load();
+  const checked = el.keepCurrent.checked;
+  el.keepCurrent.disabled = true;
+  try {
+    const result = await send({ type: 'setSiteOverride', domain: overview.currentDomain, override: checked ? { mode: 'ignored' } : null });
+    if (result?.error) throw new Error(result.error);
+    if (await load()) setStatus(checked ? 'This site is kept' : 'Keep removed', 'neutral', checked ? 'Bulk and automatic cleanup will skip it. Direct site actions can still clear it.' : 'Your configured cleanup rules apply again.');
+  } catch (error) {
+    el.keepCurrent.checked = !checked;
+    setStatus(`Could not save Keep: ${error instanceof Error ? error.message : String(error)}`, 'red');
+  } finally {
+    el.keepCurrent.disabled = false;
+  }
 });
 
 el.toggleEnabled.addEventListener('click', async () => {
+  if (!overview?.settings) return;
+  const state = automationState(overview.settings).state;
+  if (state === 'setup') return openAdvicePage(chrome.runtime.getURL('src/ui/welcome.html'), 'Setup opened. Automatic cleanup stays off until setup is complete.');
+  if (state === 'off') return chrome.runtime.openOptionsPage();
   const next = !overview.settings.enabled;
-  await send({ type: 'updateSettings', patch: { enabled: next } });
-  await load();
+  el.toggleEnabled.disabled = true;
+  try {
+    const result = await send({ type: 'updateSettings', patch: { enabled: next } });
+    if (result?.error) throw new Error(result.error);
+    if (await load()) setStatus(next ? 'Cleanup resumed' : 'Cleanup paused', 'neutral', next ? 'Manual actions and your configured triggers apply again.' : 'Manual and automatic cleanup are paused. A run already started may finish.');
+  } catch (error) {
+    setStatus(`Could not change automation: ${error instanceof Error ? error.message : String(error)}`, 'red');
+  } finally {
+    el.toggleEnabled.disabled = false;
+  }
 });
 
 el.filter.addEventListener('input', () => {
@@ -700,9 +693,35 @@ el.filter.addEventListener('input', () => {
   render();
 });
 
+for (const button of el.listActions.querySelectorAll('button')) {
+  button.addEventListener('click', () => {
+    accountCategory = button.dataset.category;
+    filterText = '';
+    el.filter.value = '';
+    renderSiteList(accountGroups(overview?.sites, overview?.relevance));
+    document.getElementById('panel-accounts').scrollTop = 0;
+  });
+}
+
+function openActivity() {
+  tabs.select('activity', true);
+}
+document.getElementById('current-options').addEventListener('toggle', (event) => {
+  if (event.currentTarget.open) event.currentTarget.scrollIntoView({ block: 'nearest' });
+});
+el.activityPreview.addEventListener('click', openActivity);
+el.statusView.addEventListener('click', () => {
+  openActivity();
+  el.runEvidence.open = true;
+});
+el.statusDismiss.addEventListener('click', () => {
+  el.status.hidden = true;
+  tabs.select(document.body.dataset.view, true);
+});
+
 el.crashDismiss.addEventListener('click', async () => {
   await send({ type: 'dismissCrashReport' });
-  el.crashReport.hidden = true;
+  await load();
 });
 
 el.openRecovery.addEventListener('click', () => {
@@ -711,4 +730,5 @@ el.openRecovery.addEventListener('click', () => {
 
 el.openOptions.addEventListener('click', () => chrome.runtime.openOptionsPage());
 
+window.addEventListener('pagehide', () => clearTimeout(runningPoll));
 load();

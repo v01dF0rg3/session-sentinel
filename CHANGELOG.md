@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.37.0 — 5 September 2026
+
+### A quieter Home, with detail one tab away
+
+The popup now opens to a compact 360 × 484 Home screen. Custom, bundled SVG doorway artwork,
+light/dark palettes, softer controls, and short transitions replace the always-expanded
+account and evidence panels. No remote art, fonts, new permissions, or runtime libraries
+were added. Settings and the recovery checklist keep their existing layouts.
+
+- **Home** explicitly labels the bulk action **Sign out of all confirmed accounts** and
+  the current-site action **Sign out site**, with attempt-only wording and scope underneath.
+  Keep, priority, and local-only clearing are under **Site options**.
+- **Accounts** separates Confirmed, Candidates, and Other sites. Counts and searches stay
+  within their evidence category; missing confirmation data never promotes cookied sites.
+- **Activity** holds the complete result text, per-site evidence, pending/skipped work, and
+  provider recovery links. The Home summary and Activity dot still flag incomplete work.
+- Working indicators run only while work is pending. Results remain unverified attempts
+  or local observations, not green “all safe” celebrations or artificial progress bars.
+  Reopening during cleanup polls the worker until it ends. Login, Keep, and automation
+  controls provide feedback, including errors.
+- Tabs support keyboard navigation and retain scroll position. Native confirmation still
+  requires an explicit choice. Reduced-motion preferences disable all popup animations.
+- The automation label distinguishes setup needed, paused, no configured triggers, and on.
+  It describes settings, never account safety.
+
+The cleanup engine, permissions, confirmed-only bulk scope, and recovery limits are unchanged.
+Browser verification uses fictional account fixtures, not installed-extension or copied-token
+revocation tests.
+
+Validation: 261 Node tests, 74 Chrome popup checks, and 25 Chrome page-action checks passed.
+
 ## 0.36.2 — 5 September 2026
 
 ### Make the next sign-out step visible

@@ -18,6 +18,7 @@ const USER_FACING_FILES = [
   '../src/ui/popup.html',
   '../src/ui/popup.js',
   '../src/ui/signout-prompt.js',
+  '../src/ui/popup-view.js',
   '../src/ui/options.html',
   '../src/ui/recovery.html',
   '../src/ui/recovery.js',
@@ -72,6 +73,8 @@ test('recovery and results state the safety limits explicitly', async () => {
 
   assert.match(recovery, /trusted (?:phone|computer|device)/i);
   assert.match(recovery, /password change does not guarantee every session/i);
-  assert.match(popup, /Attempt sign-out of confirmed accounts/);
+  assert.match(popup, /Sign out of all confirmed accounts/);
+  assert.match(popup, /Tries site sign-out, then clears local session data\./);
+  assert.match(popup, /Other sessions or stolen tokens may still work\./);
   assert.match(report, /invalidation of a copied token was not independently proved/i);
 });

@@ -38,7 +38,7 @@ a guided place to start when they know they are being hacked.
 - Tries to use each website's real sign-out process, then clears its local session data.
 - Can act automatically after inactivity, screen lock, sleep, or browser close.
 - Shows what was attempted, what Chrome confirmed locally, and what needs attention.
-- Provides a **Been hacked?** checklist that starts with the accounts that can unlock all
+- Provides a **Recovery help** checklist that starts with the accounts that can unlock all
   your other accounts.
 - Prints or saves a private recovery plan you can use on another trusted device.
 - Lets you mark sites **Never clear this site** when you want them left alone.
@@ -81,7 +81,7 @@ password. Password-change behavior varies, so verify the session list afterward.
    trust. An extension running on an infected computer cannot make that computer safe.
 2. **Secure your main email and sign-in accounts first**, such as Google, Microsoft, or
    Apple. Attackers can use them to reset the passwords for many other accounts.
-3. Open Session Sentinel and select **Been hacked?** to work through the guided account
+3. Open Session Sentinel and select **Recovery help** to work through the guided account
    list.
 4. Use each site's security page to revoke unknown sessions or sign out other devices.
 5. Change exposed passwords and do not reuse the same password across sites.
@@ -89,13 +89,13 @@ password. Password-change behavior varies, so verify the session list afterward.
    recovery codes that may have been exposed.
 7. Remove the malware—or reinstall Windows—before trusting the affected computer again.
 
-**Attempt sign-out of confirmed accounts** is an optional containment action. If malware may
+**Sign out of all confirmed accounts** is an optional containment action. If malware may
 still be running, do the recovery steps from a trusted device first; the button does not make
 an infected computer safe and does not prove that stolen tokens were revoked.
 
 ### Take the checklist to a trusted device
 
-Open **Been hacked?**, then choose **Print / Save PDF** or **Save text file**. In Chrome's
+Open **Recovery help**, then choose **Print / Save PDF** or **Save text file**. In Chrome's
 print dialog, choose a printer or **Save as PDF**. You can also read a printout or photograph
 it with your phone, without installing Session Sentinel on the other device.
 
@@ -134,6 +134,25 @@ An unpacked extension does not update itself from GitHub. To install a newer ver
 replace the old project folder with the new download and select **Reload** beside Session
 Sentinel on `chrome://extensions`.
 
+## A simple Home screen, details when you need them
+
+The popup opens on **Home** with quick actions and a small summary—not a wall of accounts.
+
+- **Home:** **Sign out of all confirmed accounts** acts on confirmed accounts, skipping kept
+  sites. **Sign out site** under “Current site” starts with that site; linked sign-in sites may also be
+  included. Expand **Site options** for Keep,
+  cleanup priority, and **Clear local data only**.
+- **Accounts:** switch between **Confirmed**, **Candidates**, and **Other sites**. Search
+  stays within the selected category; it never turns a visitor-cookie site into an account.
+- **Activity:** inspect the full cleanup report, unfinished or skipped sites, and provider
+  session-review links. A dot and short Home summary flag a run that needs attention.
+
+Animations show work in progress and result changes, not a security guarantee or a made-up
+percentage. They respect your device's reduced-motion preference. **Recovery help** and
+**Settings** stay reachable from every tab. The automation indicator describes your configured
+triggers; it says **Set up automation** until you complete setup.
+Pausing cleanup pauses manual and automatic cleanup, but a run already started may finish.
+
 ## Using the account list
 
 ### Confirmed accounts
@@ -142,10 +161,10 @@ These are sites where Session Sentinel found positive evidence of a login. The e
 may have watched the sign-in happen, found signed-in account controls on the page, or seen a
 new authentication cookie appear.
 
-The **Attempt sign-out of confirmed accounts** button acts only on this list. Riskier
+The **Sign out of all confirmed accounts** button on Home acts only on this list. Riskier
 accounts are handled first.
 
-By default, selecting **Attempt sign-out** beside a high-risk site opens a confirmation
+By default, selecting **Try sign-out** beside a high-risk site opens a confirmation
 window. Choose **Attempt sign-out anyway** to continue, or **Cancel** to return without
 starting that action. If you think you've been hacked, choose **Open recovery checklist**
 instead and use another trusted device if malware may be active. The full warning is under
@@ -157,7 +176,7 @@ Some sites already had session-looking cookies before Session Sentinel was insta
 cookie alone cannot prove that you have an account; news sites and shopping sites also give
 cookies to anonymous visitors.
 
-Open **Log in to pre-existing accounts** and select **Login** beside a site:
+Open **Accounts → Candidates** and select **Login** beside a site:
 
 1. Session Sentinel opens the real website.
 2. If the page already shows that you are signed in, the site is confirmed automatically.
@@ -172,8 +191,8 @@ the candidate list.
 
 ### Other cookied sites
 
-This section contains websites with local data but no reliable evidence of an account. They
-are not included by the manual **Attempt sign-out of confirmed accounts** button.
+Open **Accounts → Other sites** for websites with local data but no reliable evidence of an
+account, including any kept non-accounts. They are not included by **Sign out of all confirmed accounts**.
 
 ### Ordering by usage
 
@@ -195,9 +214,9 @@ Automatic safety wipes use a broader session-candidate list than the manual conf
 account button. This favors removing suspicious local session data during an automatic
 security event, but it can sign you out of a site that was not shown as a confirmed account.
 
-Use **Never clear this site** for music players, work dashboards, home-control pages, or
+Use **Keep this site's local data** under **Site options** for music players, work dashboards, home-control pages, or
 anything else that should survive automatic cleanup. You can still use that site's
-individual **Attempt sign-out** or **Clear data** button later.
+individual **Try sign-out** or **Clear local data only** button later.
 
 Deep cleanup, including IndexedDB and cache storage, is limited to critical sites by
 default. Clearing those storage types everywhere could destroy offline drafts or locally

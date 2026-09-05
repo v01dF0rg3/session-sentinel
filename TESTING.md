@@ -56,11 +56,27 @@ injects the stub on the fly.
 ### Sign-out confirmation and visible feedback
 
 Open `/dev/popup.test.html` on the same server. It embeds the real generated popup in a
-380 × 584 frame with fictional accounts. The checks reproduce a scrolled account action,
+360px-wide frame with fictional accounts. Home is 484px tall; the detailed tabs use 560px.
+The checks reproduce a scrolled account action,
 then exercise the native modal, visible warning and buttons, focus and scroll restoration,
 single dispatch, recovery-only actions, prompt preferences, failures, and a short viewport.
 The ten Node checks in `tests/signout-prompt.test.mjs` cover choice dispatch/state; they
-do not claim to test native dialog layout or accessibility.
+do not claim to test native dialog layout or accessibility. `tests/popup-view.test.mjs`
+also covers strict account categories, compact result honesty, and automation labels.
+
+Home must start with the account lists and logs hidden, require no scrolling at its default
+size, and retain a visible security limit. **Sign out of all confirmed accounts** must be
+visibly distinct from **Sign out site**, with the attempt-only explanation still in view.
+Accounts has separate Confirmed/Candidates/Other
+filters. Activity retains the detailed evidence after a feedback card is dismissed.
+Keyboard navigation follows the [WAI tabs pattern](https://www.w3.org/WAI/ARIA/apg/patterns/tabs/).
+
+Preview variants: `?popup=large` shows 35 candidates and 173 other sites; `?popup=empty`,
+`?popup=kept`, `?popup=long`, and `?popup=error` cover empty/all-kept/long-name/read-error states.
+`?automation=ready` enables the fictional setup-complete state. `?theme=light` and
+`?theme=dark` exercise both palettes; append `&motion=reduce` to disable motion. These media
+overrides live only in the dev stub, never the shipped UI. `?run=active` simulates reopening
+during a run, then ending it; the working animation must stop when polling observes that end.
 
 Also check with real keyboard input in the preview: Enter on the initial heading must do
 nothing; Tab must reach the dialog controls; Escape and Cancel must return to the selected
@@ -71,13 +87,13 @@ needed for these checks.
 
 ### Cleanup evidence and failure fixtures
 
-The popup preview includes a mixed four-site report with one local failure. Expand
-**Last cleanup** and confirm that cookie readback, storage API acceptance, and website
-attempts remain distinct. The **Been hacked?** and **Settings** footer must remain visible
+The popup preview includes a mixed four-site report with one local failure. Open **Activity**,
+expand **Last cleanup**, and confirm that cookie readback, storage API acceptance, and website
+attempts remain distinct. **Recovery help** and **Settings** must remain visible
 when evidence is expanded or the account list is long.
 
-Use `/dev/popup-preview.html?run=interrupted` for unfinished domains. The panel should open
-automatically, label the interruption, retain completed evidence, and never count pending
+Use `/dev/popup-preview.html?run=interrupted` for unfinished domains. Home must flag the
+interruption and Activity must retain completed evidence, without ever counting pending
 sites as cleared. These fixtures do not act on real accounts.
 
 The Node regressions in `cleanup.test.mjs`, `security-boundaries.test.mjs`,
@@ -179,7 +195,7 @@ Work through these in order. Each one exercises a layer that no automated test r
 
 ### C. Website sign-out attempt (Tiers 1, 3, 4)
 
-- [ ] Per-site **Attempt sign-out** on a site with a recipe
+- [ ] Per-site **Try sign-out** on a site with a recipe
 - [ ] Work happens in a background tab inside an existing window; no window is created or closed
 - [ ] A reached route/control says **sign-out attempted**, not **revoked**
 - [ ] With a disposable GitHub account and tab reload enabled, leave the work tab alone.
@@ -194,8 +210,8 @@ Work through these in order. Each one exercises a layer that no automated test r
 
 ### D. Confirmed-only bulk scope
 
-- [ ] Leave at least one domain in **Log in to pre-existing accounts** unresolved
-- [ ] Press **Attempt sign-out of confirmed accounts**
+- [ ] Leave at least one domain in **Accounts → Candidates** unresolved
+- [ ] Press **Sign out of all confirmed accounts** on Home
 - [ ] The result names only confirmed accounts; the unanswered candidate is untouched
 
 ### E. Candidate login flow
@@ -208,7 +224,7 @@ Work through these in order. Each one exercises a layer that no automated test r
 ### F. Keep-site guarantee
 
 - [ ] Tick **Never clear this site** on one site
-- [ ] Press **Attempt sign-out of confirmed accounts**
+- [ ] Press **Sign out of all confirmed accounts** on Home
 - [ ] That site's local data remains; the other confirmed, non-kept accounts are processed
 - [ ] The status line mentions the kept site was skipped
 
@@ -222,7 +238,7 @@ Work through these in order. Each one exercises a layer that no automated test r
 
 ### H. Failure behaviour
 
-- [ ] Turn off networking and press **Attempt sign-out of confirmed accounts** — it should report
+- [ ] Turn off networking and press **Sign out of all confirmed accounts** — it should report
       failures honestly, not claim success
 - [ ] Check the service worker console (`chrome://extensions` → *service worker*) for
       unhandled errors after each of the above
@@ -235,7 +251,7 @@ Work through these in order. Each one exercises a layer that no automated test r
 
 ### I. Recovery handoff (non-destructive)
 
-- [ ] Open **Been hacked?**; essential accounts and trusted-device warnings are visible
+- [ ] Open **Recovery help**; essential accounts and trusted-device warnings are visible
 - [ ] With the high-risk filter selected, save a text file and confirm a known low-risk
       confirmed account is included, while an unresolved candidate is absent
 - [ ] Check a row as reviewed, then export again; every exported checkbox is still empty

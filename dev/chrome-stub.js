@@ -8,6 +8,20 @@
 
 (function () {
   const previewQuery = new URLSearchParams(location.search);
+  const fixtureStartedAt = Date.now();
+  // Preview-only media variants; no OS/browser preference or installed extension changes.
+  window.addEventListener('load', () => {
+    if (['light', 'dark'].includes(previewQuery.get('theme'))) document.documentElement.style.colorScheme = previewQuery.get('theme');
+    for (const sheet of document.styleSheets) {
+      for (const rule of sheet.cssRules) {
+        if (!(rule instanceof CSSMediaRule)) continue;
+        if (rule.conditionText.includes('prefers-color-scheme: dark') && ['light', 'dark'].includes(previewQuery.get('theme'))) {
+          rule.media.mediaText = previewQuery.get('theme') === 'dark' ? 'screen' : 'not all';
+        }
+        if (rule.conditionText.includes('prefers-reduced-motion: reduce') && previewQuery.get('motion') === 'reduce') rule.media.mediaText = 'screen';
+      }
+    }
+  }, { once: true });
   // Render the real print rules on screen for visual QA where a native print dialog is
   // unavailable. This checks styling, not page breaks or physical printer behavior.
   if (previewQuery.get('print') === '1') {
@@ -106,6 +120,7 @@
       { domain: 'slack.com', tier: 'high', outcome: 'failed', detail: 'could not clear local data', tabsRefreshed: 0, verified: false }
     ]
   };
+  if (previewQuery.get('automation') === 'ready') settings.onboarded = true;
 
   for (const site of lastReport.sites) {
     site.serverAction = site.outcome === 'logoutAttempted' ? 'attempted' : 'notAttempted';
@@ -153,7 +168,8 @@
     site.needsConfirmation = questionDomains.includes(site.domain);
   }
 
-  const overview = () => ({
+  const overview = () => {
+    const snapshot = {
     settings,
     sites,
     currentDomain: 'youtube.com',
@@ -169,8 +185,28 @@
       canRankByFrequency: settings.useVisitFrequency,
     },
     recipeStatus: { total: 3, source: 'built-in', bundleVersion: null, fetchedAt: null },
-    crashTrail: crashTrail.value
-  });
+    crashTrail: crashTrail.value,
+    runInProgress: previewQuery.get('run') === 'active' && Date.now() - fixtureStartedAt < 2300
+    };
+    if (snapshot.runInProgress) snapshot.lastReport = { ...lastReport, status: 'running', pending: ['unfinished.example'] };
+    if (previewQuery.get('popup') === 'empty') {
+      snapshot.sites = [];
+      snapshot.currentDomain = null;
+      snapshot.lastReport = null;
+      snapshot.relevance = { confirmed: [], questions: [] };
+    }
+    if (previewQuery.get('popup') === 'kept') snapshot.sites = sites.map((site) => signedInNow.has(site.domain) ? { ...site, mode: 'ignored' } : site);
+    if (previewQuery.get('popup') === 'long') snapshot.currentDomain = 'a-long-workspace-name.with-a-long-subdomain.example.com';
+    if (previewQuery.get('popup') === 'github') snapshot.currentDomain = 'github.com';
+    if (previewQuery.get('popup') === 'large') {
+      const candidates = Array.from({ length: 34 }, (_, i) => ({ domain: `candidate${i + 1}.example`, tier: 'low', mode: 'default', needsConfirmation: true }));
+      const other = Array.from({ length: 130 }, (_, i) => ({ domain: `visitor${i + 1}.example`, tier: 'low', mode: 'default' }));
+      snapshot.sites = [...sites, ...candidates, ...other];
+      snapshot.relevance = { ...snapshot.relevance, questions: [...questionDomains, ...candidates.map((site) => site.domain)] };
+    }
+    if (previewQuery.get('popup') === 'error') return { error: 'Fixture: account storage unavailable.' };
+    return snapshot;
+  };
 
   const recovery = { done: [], minTier: 'high', startedAt: Date.now() };
 
@@ -233,7 +269,7 @@
     scripting: { executeScript: () => delay([{ result: { ok: true, detail: 'found' } }], 20) },
     notifications: { create: () => delay('n1', 10), clear: () => delay(true, 5) },
     runtime: {
-      getManifest: () => ({ version: '0.36.2', permissions: ['storage','alarms','idle','cookies','browsingData','scripting','tabs','notifications'] }),
+      getManifest: () => ({ version: '0.37.0', permissions: ['storage','alarms','idle','cookies','browsingData','scripting','tabs','notifications'] }),
       async sendMessage(message) {
         if (previewQuery.get('recovery') === 'save-error' && ['markRecoveryStep', 'setRecoveryScope', 'resetRecovery'].includes(message?.type)) {
           return delay({ error: 'Recovery fixture: storage unavailable' }, 20);
