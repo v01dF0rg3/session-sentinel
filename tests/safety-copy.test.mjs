@@ -17,6 +17,7 @@ const USER_FACING_FILES = [
   '../STORE.md',
   '../src/ui/popup.html',
   '../src/ui/popup.js',
+  '../src/ui/signout-prompt.js',
   '../src/ui/options.html',
   '../src/ui/recovery.html',
   '../src/ui/recovery.js',

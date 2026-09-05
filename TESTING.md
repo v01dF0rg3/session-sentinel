@@ -14,7 +14,7 @@ account evidence, result semantics, and safety copy. No real `chrome.*` calls ar
 **This is the layer where a bug could silently wipe data the user asked us to keep or make
 a security claim the extension did not verify**, which is why it has the most coverage.
 
-## 2. Injected page logic (browser)
+## 2. Page logic and popup behavior (browser)
 
 ```bash
 node dev/server.mjs 5599
@@ -52,6 +52,22 @@ sessions" and a heading reading "Signed in" long after the real popup had been c
 "Attempt sign-out of confirmed accounts". Reviewing wording against a stale copy produces
 confident wrong answers, so the copies are gone and the server rebases asset paths and
 injects the stub on the fly.
+
+### Sign-out confirmation and visible feedback
+
+Open `/dev/popup.test.html` on the same server. It embeds the real generated popup in a
+380 × 584 frame with fictional accounts. The checks reproduce a scrolled account action,
+then exercise the native modal, visible warning and buttons, focus and scroll restoration,
+single dispatch, recovery-only actions, prompt preferences, failures, and a short viewport.
+The ten Node checks in `tests/signout-prompt.test.mjs` cover choice dispatch/state; they
+do not claim to test native dialog layout or accessibility.
+
+Also check with real keyboard input in the preview: Enter on the initial heading must do
+nothing; Tab must reach the dialog controls; Escape and Cancel must return to the selected
+account without starting cleanup. Expand **Why recovery may need more steps** and confirm
+that the action buttons stay visible. After confirming a fictional sign-out, busy feedback
+and the result should appear in view. No real account or installed-extension action is
+needed for these checks.
 
 ### Cleanup evidence and failure fixtures
 

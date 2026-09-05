@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Popup confirmation tests — fictional accounts only</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body { margin: 16px; font: 14px/1.5 system-ui, sans-serif; }
+      main { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
+      iframe { width: 380px; height: 584px; border: 0; }
+      #results { max-width: 700px; }
+      .pass { color: light-dark(#156536, #8bdfaa); }
+      .fail { color: light-dark(#a30a19, #ff9fa7); }
+    </style>
+  </head>
+  <body>
+    <h1>Popup confirmation tests</h1>
+    <p>Actual popup HTML/CSS/JS, fictional Chrome APIs. No installed extension or real account is used.</p>
+    <p id="summary" role="status">Running…</p>
+    <main>
+      <iframe id="popup" title="Session Sentinel popup fixture"></iframe>
+      <ol id="results"></ol>
+    </main>
+    <script type="module" src="popup.test.js"></script>
+  </body>
+</html>

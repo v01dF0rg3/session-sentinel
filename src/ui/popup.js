@@ -7,11 +7,14 @@ import { localEvidenceText, outcomeColor, summarize } from '../engine/report.js'
 import { compromiseAdviceFor } from '../core/session-pages.js';
 import { atLeast } from '../core/risk.js';
 import { groupByTier } from '../core/relevance.js';
+import { createSignoutPrompt } from './signout-prompt.js';
 
 /** @type {any} */
 let overview = null;
+let actionInProgress = false;
 
 const el = {
+  content: document.querySelector('.popup-content'),
   status: /** @type {HTMLElement} */ (document.getElementById('status')),
   runEvidence: document.getElementById('run-evidence'),
   runEvidenceTitle: document.getElementById('run-evidence-title'),
@@ -47,6 +50,24 @@ let showOther = false;
 /** Are unanswered account candidates expanded? Kept separate from confirmed accounts. */
 let showQuestions = false;
 
+const signoutPrompt = createSignoutPrompt(document.getElementById('signout-dialog'), {
+  onConfirm: (domain) => act(`Attempting sign-out of ${domain}...`, { type: 'runSite', domain }),
+  onRecovery: () => openAdvicePage(chrome.runtime.getURL('src/ui/recovery.html'),
+    'Opened the recovery checklist. If malware may be active on this computer, continue from another device you trust.'),
+  onSessions: (url, domain) => openAdvicePage(url,
+    `Opened session settings for ${domain}. Session Sentinel has not started sign-out. Review sessions from a trusted device.`)
+});
+
+async function openAdvicePage(url, message) {
+  try {
+    await chrome.tabs.create({ url });
+    setStatus(message, 'amber');
+  } catch (error) {
+    setStatus(`Could not open the page: ${error instanceof Error ? error.message : String(error)}`, 'red');
+  }
+  revealStatus();
+}
+
 /**
  * @param {any} message
  * @returns {Promise<any>}
@@ -63,6 +84,11 @@ function setStatus(text, tone) {
   el.status.hidden = false;
   el.status.className = `status ${tone}`;
   el.status.textContent = text;
+}
+
+function revealStatus() {
+  el.content.scrollTop = 0;
+  el.status.focus({ preventScroll: true });
 }
 
 async function load() {
@@ -134,6 +160,7 @@ function render() {
   } else {
     el.lastRun.textContent = 'No runs yet.';
   }
+  if (actionInProgress || overview.runInProgress) setBusy(true);
 }
 
 /**
@@ -350,8 +377,12 @@ function buildSiteRow(site) {
   const logout = document.createElement('button');
   logout.className = 'ghost small reveal';
   logout.textContent = 'Attempt sign-out';
+  logout.type = 'button';
+  logout.dataset.signoutDomain = site.domain;
+  logout.setAttribute('aria-label', `Attempt sign-out of ${site.domain}`);
+  logout.disabled = actionInProgress || overview?.runInProgress === true;
   logout.addEventListener('click', () => {
-    if (maybePromptCompromise(site.domain, site.tier)) return;
+    if (maybePromptCompromise(site.domain, site.tier, logout)) return;
     act(`Attempting sign-out of ${site.domain}...`, { type: 'runSite', domain: site.domain });
   });
 
@@ -499,7 +530,10 @@ function buildKeepControl(domain, kept, labelText) {
  * @param {any} message
  */
 async function act(busyText, message) {
+  if (actionInProgress || overview?.runInProgress) return;
+  actionInProgress = true;
   setStatus(busyText, 'busy');
+  revealStatus();
   setBusy(true);
   try {
     const report = await send(message);
@@ -515,9 +549,17 @@ async function act(busyText, message) {
   } catch (error) {
     setStatus(error instanceof Error ? error.message : String(error), 'red');
   } finally {
+    try {
+      overview = await send({ type: 'getOverview' });
+    } catch (error) {
+      setStatus(`Could not refresh the account list: ${error instanceof Error ? error.message : String(error)}. Reopen the popup to check the last cleanup.`, 'red');
+    }
+    actionInProgress = false;
     setBusy(false);
-    overview = await send({ type: 'getOverview' });
     render();
+    // Keep feedback visible if the user stayed with the action. Do not steal focus
+    // or scroll position if they moved elsewhere while the worker was running.
+    if (document.activeElement === el.status) el.content.scrollTop = 0;
   }
 }
 
@@ -541,9 +583,11 @@ function worstColor(report) {
  *
  * @param {string} domain
  * @param {string} tier
+ * @param {HTMLElement} opener
  * @returns {boolean} true if a prompt was shown and the logout should wait
  */
-function maybePromptCompromise(domain, tier) {
+function maybePromptCompromise(domain, tier, opener) {
+  if (actionInProgress || overview?.runInProgress) return true;
   const setting = overview?.settings?.compromisePrompt ?? 'high';
   if (setting === 'never') return false;
   if (setting === 'high' && !atLeast(/** @type {any} */ (tier), 'high')) return false;
@@ -551,60 +595,7 @@ function maybePromptCompromise(domain, tier) {
   const advice = compromiseAdviceFor(domain);
   if (!advice) return false;
 
-  setStatus('', 'amber');
-  el.status.replaceChildren();
-
-  const title = document.createElement('strong');
-  title.textContent = advice.title;
-  title.style.display = 'block';
-  title.style.marginBottom = '4px';
-
-  const explanation = document.createElement('div');
-  explanation.textContent = advice.explanation;
-  explanation.style.marginBottom = '6px';
-
-  const adviceText = document.createElement('div');
-  adviceText.textContent = advice.advice;
-  adviceText.style.marginBottom = '8px';
-
-  const actions = document.createElement('div');
-  actions.style.display = 'flex';
-  actions.style.gap = '6px';
-  actions.style.flexWrap = 'wrap';
-
-  const recovery = document.createElement('button');
-  recovery.className = 'primary small';
-  recovery.textContent = 'Open recovery checklist';
-  recovery.title = 'Starts with clean-device guidance and does not log you out automatically';
-  recovery.addEventListener('click', () => {
-    chrome.tabs.create({ url: chrome.runtime.getURL('src/ui/recovery.html') });
-    setStatus(
-      'Opened the recovery checklist. If malware may be active on this computer, continue from another device you trust.',
-      'amber'
-    );
-  });
-
-  /** @type {HTMLButtonElement | null} */
-  let sessions = null;
-  if (advice.sessionsUrl) {
-    sessions = document.createElement('button');
-    sessions.className = 'ghost small';
-    sessions.textContent = 'Review active sessions';
-    sessions.title = `Open ${advice.sessionsLabel ?? 'session settings'} for ${advice.domain}; use only on a trusted device`;
-    sessions.addEventListener('click', () => chrome.tabs.create({ url: advice.sessionsUrl }));
-  }
-
-  const justLogout = document.createElement('button');
-  justLogout.className = 'ghost small';
-  justLogout.textContent = 'Attempt sign-out anyway';
-  justLogout.addEventListener('click', () =>
-    act(`Attempting sign-out of ${domain}...`, { type: 'runSite', domain })
-  );
-
-  actions.append(recovery);
-  if (sessions) actions.append(sessions);
-  actions.append(justLogout);
-  el.status.append(title, explanation, adviceText, actions);
+  signoutPrompt.show(domain, advice, opener);
 
   return true;
 }
@@ -668,7 +659,7 @@ function renderRevokeGuidance(report) {
 
 /** @param {boolean} busy */
 function setBusy(busy) {
-  for (const button of [el.logoutAll, el.logoutCurrent, el.clearCurrent]) {
+  for (const button of [el.logoutAll, el.logoutCurrent, el.clearCurrent, ...el.siteList.querySelectorAll('[data-signout-domain]')]) {
     button.disabled = busy;
   }
 }
@@ -679,7 +670,7 @@ el.logoutCurrent.addEventListener('click', () => {
   const domain = overview?.currentDomain;
   if (!domain) return;
   const tier = overview.sites.find((/** @type {any} */ s) => s.domain === domain)?.tier ?? 'low';
-  if (maybePromptCompromise(domain, tier)) return;
+  if (maybePromptCompromise(domain, tier, el.logoutCurrent)) return;
   act(`Attempting sign-out of ${domain}...`, { type: 'runSite', domain });
 });
 

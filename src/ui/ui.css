@@ -145,6 +145,29 @@ button:disabled { opacity: .55; cursor: default; }
 .status.red { border-left-color: var(--red); }
 .status.busy { border-left-color: var(--accent); }
 
+/* The choice must not be buried above a scrolled account list. The native modal keeps
+   background actions inert; only its advice scrolls, so the next steps stay reachable. */
+.signout-dialog {
+  width: 356px; max-width: calc(100vw - 24px); max-height: calc(100vh - 24px);
+  padding: 0; border: 1px solid var(--border); border-radius: 12px;
+  color: var(--text); background: var(--bg);
+  box-shadow: 0 12px 40px #0006;
+}
+.signout-dialog[open] { display: flex; flex-direction: column; }
+.signout-dialog::backdrop { background: #0009; }
+.signout-dialog-heading { padding: 14px 14px 10px; flex-shrink: 0; }
+.signout-dialog h2 { font-size: 16px; color: var(--text); text-transform: none; letter-spacing: 0; }
+#signout-domain { display: block; overflow-wrap: anywhere; margin: 3px 0; }
+#signout-pending { color: var(--text-muted); font-size: 11.5px; }
+.signout-dialog-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 14px 12px; font-size: 12px; }
+.signout-warning { margin: 10px 0; padding: 8px; border-left: 3px solid var(--amber); background: var(--bg-sunken); }
+.signout-warning strong { display: block; }
+#signout-details summary { cursor: pointer; color: var(--accent); }
+#signout-details p { margin-top: 8px; }
+.signout-dialog-actions { display: grid; gap: 7px; flex-shrink: 0; padding: 12px 14px; border-top: 1px solid var(--border); background: var(--bg-sunken); }
+.signout-dialog-choice { display: grid; grid-template-columns: 1fr auto; gap: 7px; }
+.signout-dialog :where(h2, summary):focus-visible, #status:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 .guidance { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 6px; }
 .guidance-item { margin-bottom: 8px; }
 .guidance-item:last-child { margin-bottom: 0; }

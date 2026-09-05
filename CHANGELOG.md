@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.36.2 — 5 September 2026
+
+### Make the next sign-out step visible
+
+Clicking a site's **Attempt sign-out** could insert recovery advice above the current
+scroll position, with its action buttons below a long paragraph. The prompt now opens as
+a native modal that names the selected site, says nothing has started yet, and keeps the
+recovery, session-review, sign-out, and Cancel controls in view. The trusted-device warning
+stays visible; full provider-specific advice is available in an expandable section.
+
+- Cancel or Escape returns to the originating account without running cleanup. Initial
+  focus is on a non-action heading, and background cleanup controls are inert.
+- Confirmation is consumed once. Account action buttons stay disabled during the run,
+  including after filtering, and user-triggered busy feedback is brought into view.
+- Results remain in view if the user stays with the action, without stealing focus if they
+  move elsewhere. Page-opening and account-refresh failures show actionable feedback.
+- The existing high-risk/always/never prompt preference and confirmed-only bulk scope are
+  unchanged. No extra permissions, token access, or remote-revocation claims were added.
+
+Validation: 249 Node tests pass, including ten new prompt-state/dispatch checks. All
+28 popup checks and the existing 25 page-action checks pass in real Chrome. The popup
+harness uses fictional APIs at extension-sized and short viewports; no real account was
+logged out. Installed-extension behavior still needs a check after reloading.
+
 ## 0.36.1 — 5 September 2026
 
 ### A navigating work tab must not hold up local cleanup

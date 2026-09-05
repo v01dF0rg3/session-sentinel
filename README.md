@@ -145,6 +145,12 @@ new authentication cookie appear.
 The **Attempt sign-out of confirmed accounts** button acts only on this list. Riskier
 accounts are handled first.
 
+By default, selecting **Attempt sign-out** beside a high-risk site opens a confirmation
+window. Choose **Attempt sign-out anyway** to continue, or **Cancel** to return without
+starting that action. If you think you've been hacked, choose **Open recovery checklist**
+instead and use another trusted device if malware may be active. The full warning is under
+**Why recovery may need more steps**.
+
 ### Pre-existing account candidates
 
 Some sites already had session-looking cookies before Session Sentinel was installed. A

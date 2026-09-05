@@ -1,6 +1,6 @@
 # Privacy Policy — Session Sentinel
 
-Last updated: 5 September 2026. Applies to version 0.36.1.
+Last updated: 5 September 2026. Applies to version 0.36.2.
 
 ## The short version
 

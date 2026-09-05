@@ -45,7 +45,7 @@
     <p class="hint" id="scope-hint"></p>
 
     <main class="popup-content">
-    <div id="status" class="status" role="status" aria-live="polite" hidden></div>
+    <div id="status" class="status" role="status" aria-live="polite" tabindex="-1" hidden></div>
 
     <details id="run-evidence" class="run-evidence" hidden>
       <summary id="run-evidence-title">Last cleanup: evidence and next steps</summary>
@@ -85,6 +85,33 @@
         <button id="open-options" class="link" type="button">Settings</button>
       </span>
     </footer>
+
+    <dialog id="signout-dialog" class="signout-dialog" aria-labelledby="signout-title signout-domain" aria-describedby="signout-pending signout-warning">
+      <div class="signout-dialog-heading">
+        <h2 id="signout-title" tabindex="-1" autofocus>Attempt sign-out?</h2>
+        <strong id="signout-domain"></strong>
+        <p id="signout-pending">Nothing has started yet. Choose an option below.</p>
+      </div>
+      <div class="signout-dialog-body">
+        <p>This attempts the site's sign-out, then clears its local session data in this Chrome profile.
+          It does not verify that a stolen token stops working.</p>
+        <p id="signout-warning" class="signout-warning"><strong>Think you've been hacked?</strong>
+          If malware may be active, stop and use another trusted device for recovery.</p>
+        <details id="signout-details">
+          <summary>Why recovery may need more steps</summary>
+          <p id="signout-explanation"></p>
+          <p id="signout-advice"></p>
+        </details>
+      </div>
+      <div class="signout-dialog-actions">
+        <button id="signout-recovery" class="primary small" type="button">Open recovery checklist</button>
+        <button id="signout-sessions" class="ghost small" type="button">Review active sessions</button>
+        <div class="signout-dialog-choice">
+          <button id="signout-confirm" class="ghost small" type="button">Attempt sign-out anyway</button>
+          <button id="signout-cancel" class="ghost small" type="button">Cancel</button>
+        </div>
+      </div>
+    </dialog>
 
     <script type="module" src="popup.js"></script>
   </body>
