@@ -12,9 +12,13 @@
 
 /**
  * @param {import('../core/recipes.js').Step} step
+ * @param {string} expectedOrigin Worker-checked origin, checked again inside this document.
  * @returns {Promise<{ ok: boolean, detail: string }>}
  */
-export async function pageStep(step) {
+export async function pageStep(step, expectedOrigin) {
+  const onExpectedOrigin = () => typeof expectedOrigin === 'string' &&
+    expectedOrigin !== 'null' && location.origin === expectedOrigin;
+  if (!onExpectedOrigin()) return { ok: false, detail: 'page origin changed or was not authorized' };
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
   /**
@@ -78,11 +82,11 @@ export async function pageStep(step) {
       const y = rect.top + rect.height / 2;
       // Outside the viewport we cannot hit-test; scrolling has already been attempted,
       // so give the element the benefit of the doubt rather than skipping it.
-      if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) return true;
+      if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) return false;
       const hit = document.elementFromPoint(x, y);
-      return !!hit && (hit === el || el.contains(hit) || hit.contains(el));
+      return !!hit && (hit === el || el.contains(hit));
     } catch {
-      return true;
+      return false;
     }
   };
 
@@ -101,6 +105,20 @@ export async function pageStep(step) {
     }
   };
 
+  // Do not let a trusted page's link/form send an automated click to another account
+  // origin. JS handlers cannot be proven safe by DOM inspection; that remains a limit.
+  const destinationAllowed = (el) => {
+    const link = el.closest('a[href]');
+    const form = el.form;
+    const targets = [];
+    if (link) targets.push(link.href);
+    if (form) targets.push(el.hasAttribute('formaction') ? el.formAction : form.action);
+    return targets.every((value) => {
+      try { const url = new URL(value, location.href); return url.origin === expectedOrigin && ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password; }
+      catch { return false; }
+    });
+  };
+
   try {
     switch (step.op) {
       case 'sleep': {
@@ -111,6 +129,7 @@ export async function pageStep(step) {
       case 'waitFor': {
         const deadline = Date.now() + (step.timeoutMs || 8000);
         while (Date.now() < deadline) {
+          if (!onExpectedOrigin()) return { ok: false, detail: 'page origin changed' };
           if (findAll(step.selector || '').some(visible)) return { ok: true, detail: 'found' };
           await wait(150);
         }
@@ -164,13 +183,16 @@ export async function pageStep(step) {
         // something is covering it. Reporting a click that landed on an overlay as
         // success is how a logout silently does not happen.
         for (const candidate of candidates) {
+          if (!onExpectedOrigin()) return { ok: false, detail: 'page origin changed' };
+          if (!destinationAllowed(candidate)) continue;
           candidate.scrollIntoView({ block: 'center' });
           if (!hittable(candidate)) continue;
+          if (!onExpectedOrigin() || !destinationAllowed(candidate)) continue;
           candidate.click();
-          return { ok: true, detail: `clicked "${labelOf(candidate).slice(0, 60)}"` };
+          return { ok: true, detail: 'activated a matching control' };
         }
 
-        return { ok: false, detail: `found ${candidates.length} match(es) but all were obscured` };
+        return { ok: false, detail: `found ${candidates.length} match(es) but all were obscured or had an untrusted destination` };
       }
 
       default:

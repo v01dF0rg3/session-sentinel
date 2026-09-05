@@ -37,7 +37,7 @@ a guided place to start when they know they are being hacked.
   very little manual work.
 - Tries to use each website's real sign-out process, then clears its local session data.
 - Can act automatically after inactivity, screen lock, sleep, or browser close.
-- Separates a sign-out attempt from verified revocation and local-only cleanup.
+- Shows what was attempted, what Chrome confirmed locally, and what needs attention.
 - Provides a **Been hacked?** checklist that starts with the accounts that can unlock all
   your other accounts.
 - Prints or saves a private recovery plan you can use on another trusted device.
@@ -57,14 +57,21 @@ Sentinel goes as far as each site allows and reports the result honestly.
 
 | Result | What it means |
 | --- | --- |
-| **Verified revoke recipe** | A separately tested “sign out everywhere” recipe completed. This is rare and does not mean the extension inspected the server's token database. |
-| **Sign-out attempted** | Session Sentinel reached a website logout route or control, then cleared local data. It cannot independently see whether the server rejected a copied token. |
-| **Cleared locally** | Cookies and site data were deleted from this computer. A token already copied by an attacker may still work. |
-| **Failed** | Session Sentinel could not complete even the local cleanup. |
+| **Sign-out attempted** | A website logout route or control was reached and local cleanup passed its checks. This does not prove a copied token stopped working. |
+| **Cleared locally** | No cookies remained at the check, and Chrome accepted the requested storage cleanup for known site addresses. Stored content was not independently read back. |
+| **Needs attention** | Cookies remained, a cleanup request failed, or verification was unavailable. The details explain what was observed. |
 
-Clearing local data reduces exposure on this computer. A sign-out attempt may also invalidate
-the session, but Session Sentinel does not claim that unless the behavior was tested
-separately. If a token may have been stolen, review the website's active sessions or devices,
+Expand **Last cleanup** in the popup for each site's evidence. An interrupted run shows
+unfinished sites rather than presenting partial work as a completed run.
+
+These checks cover the **normal Chrome profile only**, not Incognito or other profiles.
+They cannot verify copied tokens, other devices, data held in open tabs, or storage on
+addresses the extension did not discover. A page can also create new cookies after a check.
+“Allow in Incognito” does not add private-account cleanup.
+
+Clearing local data reduces exposure in this profile. A sign-out attempt may also invalidate
+a session, but **this version never reports verified remote revocation**, even for a recipe
+tested in the past. If a token may have been stolen, review the website's active sessions or devices,
 remove unfamiliar entries, use **sign out everywhere** when available, and change an exposed
 password. Password-change behavior varies, so verify the session list afterward.
 
@@ -110,7 +117,7 @@ Checking a box records your review, not proof that a stolen session was revoked.
 ## Install from this repository
 
 Session Sentinel currently loads directly from its source folder. You do not need to
-compile anything. Chrome 116 or newer is required.
+compile anything. Chrome 119 or newer is required.
 
 1. [Download Session Sentinel as a ZIP](https://github.com/v01dF0rg3/session-sentinel/archive/refs/heads/main.zip),
    then choose **Extract all** when the download finishes.
@@ -204,9 +211,12 @@ and explains which sites were included. A site marked **Never clear** is still r
 Open **Settings → Check it works → Run diagnostics**. The diagnostics exercise the browser
 features Session Sentinel relies on and report what actually works in your installed copy.
 
-The check is safe to run: it reads the cookie list without deleting it, and cleanup tests
-use a reserved test domain that cannot be a real website. Cookie values are not displayed
-or copied.
+The check does not delete real website data. It creates two public dummy cookies on a
+reserved `.invalid` domain, removes them through the real cleanup code, and checks that
+both disappeared. This includes Chrome's partitioned cookies, which are kept separately
+for the websites that embed them. Leftover test cookies expire within two minutes. Real
+cookie values are not displayed or copied. Passing diagnostics does not prove remote
+session revocation.
 
 The same page includes:
 
@@ -256,7 +266,7 @@ Session Sentinel instead borrows an existing Chrome window, opens a background t
 site's own origin, and tries these steps in order:
 
 1. A curated, declarative logout recipe.
-2. OIDC RP-initiated logout discovered from the site's standard configuration.
+2. An advertised OpenID Connect logout endpoint on the same site.
 3. A generic search for the site's own visible logout control.
 4. A local cookie and storage cleanup attempt, regardless of the sign-out result.
 
@@ -265,7 +275,7 @@ cleanup is visible. A successful click or navigation is reported as an attempt, 
 that the server invalidated the session token.
 
 Recipes are data, not remote code. Their interpreter ships inside the extension, navigation
-is restricted to the intended site or a known identity provider, and downloaded bundles
+is restricted to the intended site, and downloaded bundles
 must pass signature, version, schema, and navigation checks.
 
 ### Tests
@@ -318,8 +328,9 @@ The recipe-bundle signing key lives outside this repository at
 
 Three attacker-influenced inputs are constrained:
 
-- OIDC logout destinations must remain on the target site or a short identity-provider
-  allowlist, and redirects are checked again after landing.
+- OIDC logout destinations must remain on the target site. A site's instructions cannot
+  authorize clicks in an unrelated identity-provider account. Redirects and the page's
+  origin are checked before automation.
 - Recipes cannot navigate away from the site they claim to sign out of, even when the
   recipe bundle is correctly signed.
 - Recipe updates require an ECDSA P-256 signature from the pinned key, cannot roll back to
@@ -327,7 +338,11 @@ Three attacker-influenced inputs are constrained:
   recipes in place.
 
 These boundaries are exercised by [tests/trust.test.mjs](tests/trust.test.mjs) and
-[tests/bundle.test.mjs](tests/bundle.test.mjs).
+[tests/bundle.test.mjs](tests/bundle.test.mjs), with additional cleanup, concurrency, and
+hostile-input regressions. Site boundaries use a bundled full Public Suffix List, including
+private hosting tenants; cookies are removed by explicit cookie identity rather than a
+broader browsing-data cookie sweep. See [SECURITY.md](SECURITY.md) for the threat model,
+remaining limits, and validation required before a public release.
 
 ## More documentation
 
@@ -338,3 +353,5 @@ These boundaries are exercised by [tests/trust.test.mjs](tests/trust.test.mjs) a
 | [PRIVACY.md](PRIVACY.md) | Privacy policy |
 | [STORE.md](STORE.md) | Chrome Web Store notes and permission explanations |
 | [CHANGELOG.md](CHANGELOG.md) | Release history |
+| [SECURITY.md](SECURITY.md) | Security boundaries, limits, and release gates |
+| [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) | Public Suffix List license and provenance |

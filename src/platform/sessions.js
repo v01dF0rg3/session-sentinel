@@ -2,14 +2,14 @@
  * Reading and destroying local session material.
  *
  * Division of labour, deliberately:
- *   chrome.cookies      - enumeration and verification. It can read names and flags,
- *                         which is how we know a site looks logged in.
- *   chrome.browsingData - destruction. It clears partitioned (CHIPS) cookies and
- *                         every storage backend in one call, which hand-rolled
- *                         cookies.remove() loops silently miss.
+ *   chrome.cookies      - enumeration, exact cookie deletion, and readback, including
+ *                         partition identities (Chrome 119+).
+ *   chrome.browsingData - exact-origin storage deletion. Never used for cookies here:
+ *                         its broader domain expansion can differ from our PSL snapshot.
  */
 
-import { normalizeCookieDomain, registrableDomain } from '../core/domain.js';
+import { isCleanupDomain, normalizeCookieDomain, registrableDomain } from '../core/domain.js';
+import { cleanupOrigins, CLEARABLE_TYPES } from '../core/cleanup-scope.js';
 import { looksLikeSessionCookie, sessionEvidence } from '../core/risk.js';
 
 /**
@@ -20,7 +20,7 @@ import { looksLikeSessionCookie, sessionEvidence } from '../core/risk.js';
  * @property {number} strongCount Cookies that look like real auth tokens.
  * @property {number} moderateCount
  * @property {string[]} authNames Names of the cookies that look session-bearing.
- * @property {boolean} signedIn Confident the user has an account here.
+ * @property {boolean} signedIn Legacy candidate flag, not confirmed login evidence.
  * @property {boolean} hasHostOnlySecure
  * @property {number} lastAccessHint Best-effort recency for sorting.
  */
@@ -67,7 +67,7 @@ export async function discoverSessions() {
     else if (evidence === 'moderate') entry.moderateCount += 1;
     if (evidence === 'strong' || evidence === 'moderate') entry.authNames.push(cookie.name);
     if (cookie.secure && cookie.httpOnly) entry.hasHostOnlySecure = true;
-    // Session cookies (no expiry) are a strong signal of an active login.
+    // No-expiry cookies widen the safety-wipe candidate set, but do not prove a login.
     if (cookie.expirationDate === undefined) entry.sessionCookieCount += 1;
     if (cookie.expirationDate && cookie.expirationDate > entry.lastAccessHint) {
       entry.lastAccessHint = cookie.expirationDate;
@@ -86,7 +86,7 @@ export async function discoverSessions() {
 }
 
 /**
- * Sites that look genuinely authenticated, rather than merely cookied by an ad tag.
+ * Broad safety-wipe candidates. This is not the confirmed-account list shown by the UI.
  * @param {SiteSession[]} sessions
  * @returns {SiteSession[]}
  */
@@ -96,50 +96,55 @@ export function likelyLoggedIn(sessions) {
 
 /**
  * @typedef {object} WipeResult
- * @property {boolean} ok True only if cookies were removed - the one type that must work.
- * @property {string[]} cleared Data types actually removed.
+ * @property {boolean} ok All requested APIs succeeded and cookie readback found none.
+ * @property {string[]} cleared Data types whose removal Chrome acknowledged.
  * @property {string[]} failed Data types that could not be removed.
+ * @property {number} [originCount] Known origins submitted; not a complete storage inventory.
+ * @property {string[]} [warnings]
  * @property {string} [error]
  */
 
 /**
  * Destroy local session material for one site.
  *
- * `chrome.browsingData` keys cookie removal by registrable domain, so this covers
- * subdomains and partitioned cookies. Storage types are keyed by exact origin, hence
- * both http and https variants.
- *
- * A single `remove()` call with several data types is all-or-nothing: if Chrome rejects
- * one type, none of them are cleared. The earlier version caught that, deleted cookies
- * as a fallback, and returned ok - so a "deep" wipe could quietly degrade to cookies
- * only while still reporting success. Now a failure is retried type by type and the
- * result names exactly what survived.
+ * Cookies are removed by their exact identity in the current store, including partition
+ * keys. Storage uses only concrete origins observed before and after the sign-out attempt.
+ * A rejected multi-type storage request is retried per type, never widened to all sites.
  *
  * @param {string} domain Registrable domain.
  * @param {string[]} dataTypes chrome.browsingData keys.
+ * @param {{ origins: string[], warnings: string[] }} [beforeLogout] Origin hints captured before sign-out can erase cookies.
  * @returns {Promise<WipeResult>}
  */
-export async function wipeSite(domain, dataTypes) {
-  const origins = [`https://${domain}`, `http://${domain}`, `https://www.${domain}`];
+export async function wipeSite(domain, dataTypes, beforeLogout) {
+  if (!isCleanupDomain(domain) || !Array.isArray(dataTypes) || !dataTypes.includes('cookies') ||
+      dataTypes.some((type) => !CLEARABLE_TYPES.has(type))) {
+    return { ok: false, cleared: [], failed: ['cookies'], error: 'invalid or unsupported cleanup scope' };
+  }
+  dataTypes = [...new Set(dataTypes)];
+  if (!await hasCookieAccess(domain)) {
+    return { ok: false, cleared: [], failed: dataTypes, error: 'Site access is unavailable; local cleanup was not attempted.' };
+  }
+  const current = await snapshotCleanupScope(domain);
+  const warnings = [...new Set([...(beforeLogout?.warnings ?? []), ...current.warnings])];
+  // Re-validate even caller-supplied hints. They cannot widen the selected site boundary.
+  const origins = cleanupOrigins(domain, [], [...(beforeLogout?.origins ?? []), ...current.origins]);
   const scope = { origins, originTypes: { unprotectedWeb: true } };
 
   /** @type {Record<string, boolean>} */
   const removal = {};
-  for (const type of dataTypes) removal[type] = true;
+  const storageTypes = dataTypes.filter((type) => type !== 'cookies');
+  for (const type of storageTypes) removal[type] = true;
 
+  const cleared = [];
+  const failed = [];
   try {
-    await chrome.browsingData.remove(scope, removal);
-    return { ok: true, cleared: [...dataTypes], failed: [] };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-
+    if (storageTypes.length) await chrome.browsingData.remove(scope, removal);
+    cleared.push(...storageTypes);
+  } catch {
     // Find out precisely which types this Chrome will not clear for an origin, rather
     // than assuming the whole call is unsupported.
-    /** @type {string[]} */
-    const cleared = [];
-    /** @type {string[]} */
-    const failed = [];
-    for (const type of dataTypes) {
+    for (const type of storageTypes) {
       try {
         await chrome.browsingData.remove(scope, { [type]: true });
         cleared.push(type);
@@ -147,56 +152,71 @@ export async function wipeSite(domain, dataTypes) {
         failed.push(type);
       }
     }
-
-    // Cookies are the session. If the API would not remove them, delete them by hand
-    // rather than escalating to a browser-wide wipe - clearing every site's data
-    // because one call failed is not an acceptable failure mode for a security tool.
-    if (failed.includes('cookies')) {
-      const fallback = await removeCookiesForDomain(domain);
-      if (fallback.ok) {
-        failed.splice(failed.indexOf('cookies'), 1);
-        cleared.push('cookies');
-      }
-    }
-
-    return {
-      ok: cleared.includes('cookies'),
-      cleared,
-      failed,
-      error: failed.length ? `could not clear ${failed.join(', ')} (${message})` : undefined
-    };
   }
+
+  // Cookie removal stays exact even if Chrome's own suffix snapshot differs from ours.
+  // Never use browsingData's broader cookie-domain expansion or another cookie store.
+  await removeCookiesForDomain(domain);
+  const check = await cookieClearance(domain);
+  if (check.status === 'cleared') {
+    cleared.push('cookies');
+  } else {
+    failed.push('cookies');
+  }
+  const scopeIncomplete = storageTypes.length > 0 && warnings.length > 0;
+  return {
+    ok: failed.length === 0 && !scopeIncomplete,
+    cleared,
+    failed,
+    originCount: origins.length,
+    warnings,
+    error: failed.length ? `Local cleanup incomplete: ${failed.join(', ')} could not be cleared or verified.`
+      : scopeIncomplete ? 'Local cleanup incomplete: some origin evidence was unavailable.' : undefined
+  };
+}
+
+/** Origin strings only; no cookie values, paths, account labels, or tab IDs are retained. */
+export async function snapshotCleanupScope(domain) {
+  const warnings = [];
+  let cookies = [];
+  let tabs = [];
+  if (!isCleanupDomain(domain)) return { origins: [], warnings: ['Invalid site boundary.'] };
+  try { cookies = await cookiesForDomain(domain); }
+  catch { warnings.push('Cookie origins could not be enumerated.'); }
+  try {
+    tabs = (await chrome.tabs.query({})).filter((tab) =>
+      Boolean(tab.incognito) === Boolean(chrome.extension?.inIncognitoContext));
+  } catch { warnings.push('Open-tab origins could not be enumerated.'); }
+  return { origins: cleanupOrigins(domain, cookies.map((c) => c.domain), tabs.map((t) => t.url)), warnings };
 }
 
 /**
- * Explicit cookie removal across every cookie store (covers incognito when the
- * extension is allowed there).
+ * Explicit cookie removal in the SAME store as discovery. A normal-profile action
+ * must not silently escalate to deleting private-store cookies.
  * @param {string} domain
  * @returns {Promise<{ ok: boolean, removed: number }>}
  */
 export async function removeCookiesForDomain(domain) {
   let removed = 0;
+  if (!isCleanupDomain(domain)) return { ok: false, removed };
   try {
-    const stores = await chrome.cookies.getAllCookieStores();
-    for (const store of stores) {
-      const cookies = await chrome.cookies.getAll({ domain, storeId: store.id });
-      for (const cookie of cookies) {
-        const host = normalizeCookieDomain(cookie.domain);
-        const url = `${cookie.secure ? 'https' : 'http'}://${host}${cookie.path}`;
-        try {
-          await chrome.cookies.remove({
-            url,
-            name: cookie.name,
-            storeId: store.id,
-            ...(cookie.partitionKey ? { partitionKey: cookie.partitionKey } : {})
-          });
-          removed += 1;
-        } catch {
-          // A single stubborn cookie must not abort the sweep.
-        }
+    const cookies = await cookiesForDomain(domain);
+    for (const cookie of cookies) {
+      const host = normalizeCookieDomain(cookie.domain);
+      const url = `${cookie.secure ? 'https' : 'http'}://${host}${cookie.path}`;
+      try {
+        const result = await chrome.cookies.remove({
+          url,
+          name: cookie.name,
+          storeId: cookie.storeId,
+          ...(cookie.partitionKey ? { partitionKey: cookie.partitionKey } : {})
+        });
+        if (result) removed += 1;
+      } catch {
+        // A single stubborn cookie must not abort the sweep. Readback decides success.
       }
     }
-    return { ok: true, removed };
+    return { ok: await verifyCleared(domain), removed };
   } catch {
     return { ok: false, removed };
   }
@@ -209,12 +229,33 @@ export async function removeCookiesForDomain(domain) {
  * @returns {Promise<boolean>}
  */
 export async function verifyCleared(domain) {
+  return (await cookieClearance(domain)).status === 'cleared';
+}
+
+/** No values or names leave this function; absence is a point-in-time local observation. */
+export async function cookieClearance(domain) {
+  if (!isCleanupDomain(domain)) return { status: 'unavailable', remainingCount: null };
   try {
-    const remaining = await chrome.cookies.getAll({ domain });
-    return remaining.filter((c) => looksLikeSessionCookie(c.name)).length === 0;
+    const remaining = await cookiesForDomain(domain);
+    return { status: remaining.length ? 'remaining' : 'cleared', remainingCount: remaining.length };
   } catch {
-    return false;
+    return { status: 'unavailable', remainingCount: null };
   }
+}
+
+async function cookiesForDomain(domain) {
+  if (!await hasCookieAccess(domain)) throw new Error('Site access unavailable');
+  // An empty partitionKey matches partitioned AND unpartitioned cookies (Chrome 119+).
+  // Omitting it only reads unpartitioned cookies. No storeId means the current context.
+  return (await chrome.cookies.getAll({ domain, partitionKey: {} })).filter((cookie) =>
+    registrableDomain(normalizeCookieDomain(cookie.domain)) === domain);
+}
+
+async function hasCookieAccess(domain) {
+  const ip = domain.startsWith('[') || /^\d+(?:\.\d+){3}$/.test(domain);
+  try {
+    return await chrome.permissions.contains({ permissions: ['cookies'], origins: [`*://${ip ? domain : `*.${domain}`}/*`] });
+  } catch { return false; }
 }
 
 /**

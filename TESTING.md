@@ -20,10 +20,14 @@ a security claim the extension did not verify**, which is why it has the most co
 node dev/server.mjs 5599
 ```
 
-Open `http://localhost:5599/dev/step-runner.test.html`. 15 assertions run on load, PASS or
+Open `http://localhost:5599/dev/step-runner.test.html`. 22 assertions run on load, PASS or
 FAIL inline. These cover `pageStep` — the function injected into real pages — against the
 hiding patterns sites actually use. Every one of them exists because a naive
 implementation reports success for a click that never landed.
+
+These include origin-change races, missing origin authorization, cross-origin links/forms,
+submit-button overrides, off-viewport controls, and click-through overlays. The dev server
+binds only to loopback and refuses hidden files, path traversal, and non-GET/HEAD requests.
 
 **Run these in a visible window with a real viewport.** `pageStep` decides visibility by
 hit-testing with `elementFromPoint`, which only answers for coordinates inside the viewport.
@@ -46,6 +50,23 @@ sessions" and a heading reading "Signed in" long after the real popup had been c
 "Attempt sign-out of confirmed accounts". Reviewing wording against a stale copy produces
 confident wrong answers, so the copies are gone and the server rebases asset paths and
 injects the stub on the fly.
+
+### Cleanup evidence and failure fixtures
+
+The popup preview includes a mixed four-site report with one local failure. Expand
+**Last cleanup** and confirm that cookie readback, storage API acceptance, and website
+attempts remain distinct. The **Been hacked?** and **Settings** footer must remain visible
+when evidence is expanded or the account list is long.
+
+Use `/dev/popup-preview.html?run=interrupted` for unfinished domains. The panel should open
+automatically, label the interruption, retain completed evidence, and never count pending
+sites as cleared. These fixtures do not act on real accounts.
+
+The Node regressions in `cleanup.test.mjs`, `security-boundaries.test.mjs`,
+`run-safety.test.mjs`, `recipe-run.test.mjs`, and `tabs.test.mjs` cover exact cookie identities,
+partitions, tenant boundaries, origin hints preserved across sign-out, permission failures,
+private-store exclusion, run-lock races, partial startup retries, stale recipe claims,
+hostile redirects, and work-tab timeout cleanup. Chrome APIs here are fakes, not browser proof.
 
 ### Portable recovery plan
 
@@ -75,11 +96,14 @@ Settings → **Check it works** → **Run diagnostics**, or open
 `chrome-extension://<id>/src/ui/diagnostics.html` directly.
 
 This runs the extension's real code against the real browser APIs and reports what works.
-It is safe: it counts cookies without reading or deleting them, and the only data it clears
-belongs to `session-sentinel-selftest.invalid` — a reserved TLD that cannot resolve or hold
-anything.
+It does not delete real website data. It counts cookie metadata, then creates an ordinary
+and a partitioned cookie containing a fixed public dummy string under
+`session-sentinel-selftest.invalid`. It removes them through `wipeSite` and verifies that
+neither remains. Any leftovers expire in two minutes. Storage tests use the same reserved
+domain. Chrome supplies real cookie values to its API, but reports never include them.
 
-Fourteen checks, covering permissions, storage, idle detection, alarms, cookie enumeration,
+Fifteen checks, covering permissions, storage, idle detection, alarms, cookie enumeration,
+ordinary and partitioned cookie canaries,
 per-type data clearing, the full wipe routine, the background work-tab host, script
 injection into a real page, recipes, notifications, and current-site detection.
 
@@ -93,6 +117,10 @@ Two results deserve attention even when the overall run passes:
   better known up front.
 - *Background work tab host* failing means website sign-out cannot be attempted in the
   current window. The extension never creates or closes a browser window.
+
+Visible cookie-store count is not cleanup coverage: normal-profile cleanup must never
+sweep an allowed Incognito store. Passing the storage probes proves that Chrome accepted
+origin-scoped requests, not that every storage type was populated and independently verified.
 
 ## 4. Extension smoke test (manual)
 
@@ -119,6 +147,12 @@ Work through these in order. Each one exercises a layer that no automated test r
 - [ ] **Clear data** on the low-risk site → reload it → local sign-in state is gone
 - [ ] The other site is still signed in (origin scoping works)
 - [ ] Run it again on a site with no cookies — reports cleanly, does not error
+- [ ] Run diagnostics: both ordinary and partitioned cookie canaries are created, removed,
+      and absent on readback
+- [ ] With a disposable Incognito login open, normal-profile cleanup leaves it untouched;
+      attempting cleanup from an Incognito popup explains that it is unsupported
+- [ ] Test two disposable sibling tenants on a private suffix; selecting one leaves the
+      other's cookies and storage intact
 
 ### C. Website sign-out attempt (Tiers 1, 3, 4)
 
@@ -126,9 +160,10 @@ Work through these in order. Each one exercises a layer that no automated test r
 - [ ] Work happens in a background tab inside an existing window; no window is created or closed
 - [ ] A reached route/control says **sign-out attempted**, not **revoked**
 - [ ] A site where no sign-out control is reached honestly says **cleared locally**
-- [ ] To validate real invalidation for a specific site, use a throwaway account on a second
-      device and test whether its existing session stops working. Do not infer this from the
-      extension's local browser state.
+- [ ] On a throwaway account, inspect the provider's session list and test a second device's
+      independent session before/after the action. Record the exact flow and limitations;
+      this does not test reuse of a copied token from the first device. Do not export or
+      replay production credentials as a test
 
 ### D. Confirmed-only bulk scope
 
@@ -164,6 +199,12 @@ Work through these in order. Each one exercises a layer that no automated test r
       failures honestly, not claim success
 - [ ] Check the service worker console (`chrome://extensions` → *service worker*) for
       unhandled errors after each of the above
+- [ ] In a disposable profile, interrupt a multi-site run. The popup must show the last
+      checkpoint and unfinished domains, not a complete success
+- [ ] Force a storage API failure in a test build. Cookie removal must not erase the failed
+      site's startup retry entry; successful completion should retire it
+- [ ] Remove site access. Cleanup must say it cannot verify the result, never infer success
+      from an empty list returned without permission
 
 ### I. Recovery handoff (non-destructive)
 

@@ -8,9 +8,9 @@ A cleanup run can produce materially different evidence:
 
 | | What it does | Feasibility |
 |---|---|---|
-| **A. Local clearance** | Delete cookies + storage for an origin on this machine | Browser-verifiable per data type; remote tokens untouched |
+| **A. Local clearance** | Delete cookies and request storage cleanup for known origins in this profile | Cookie readback is observable; storage removal is API-acknowledged, not independently read back |
 | **B. Site sign-out attempt** | Drive the site's own logout route or control | The action is observable; server token state is not |
-| **C. Verified global recipe** | Run a recipe separately tested for revoke-everywhere behavior | Provider-specific, rare, and still not remote introspection |
+| **C. Remote token invalidation** | Establish that a provider rejects a previously valid token | Not independently verified by this extension |
 
 Most extensions in this space deliver A and let the user believe it is C. That is a
 security lie: the user stops worrying about a session that is still live. Every result in
@@ -32,7 +32,7 @@ navigate/click/wait steps executed in a real background tab on the site's own or
 where all of that context exists for free. This single decision shapes everything else:
 it is why `src/platform/tabs.js` exists, why the interpreter loop lives in the service
 worker rather than the page, and why the extension can honestly report that sign-out was
-attempted. `revoked` is reserved for a separately tested global recipe that completes.
+attempted. No runtime path returns `revoked`; historical recipe metadata is not current proof.
 
 ## Execution model
 
@@ -45,6 +45,16 @@ the next step.
 `step-runner.js` is injected via `chrome.scripting.executeScript({ func })`, which
 serialises the function with `toString()`. It must therefore be entirely self-contained —
 no imports, no closure over module scope.
+
+The worker validates the landing URL before every injection. The page receives the exact
+authorized origin and checks it again before using the DOM or clicking. Links, form actions,
+and submit-button overrides must stay on that origin. JavaScript event handlers remain
+site-controlled; these checks are not a guarantee about everything a page can do.
+
+OIDC discovery and guessed-path probes omit credentials/referrers and refuse redirects.
+Discovery has a deadline and a 128 KiB streamed-body limit. Discovered endpoints and recipe
+navigations must stay on the target's HTTPS registrable site. Recognising an IdP does not
+grant an unrelated site permission to direct clicks into that provider account.
 
 ### Picking the right element to click
 
@@ -77,6 +87,10 @@ Per site, in this order (`src/engine/run.js`):
 5. **Verify** by re-reading the cookie jar
 
 Wiping first is the classic bug: it deletes the credentials the logout request needed.
+
+Before step 1, read-only cookie and open-tab origin hints are captured. A successful
+website sign-out can erase the cookies that identified storage subdomains; the local wipe
+merges and revalidates the pre-sign-out hints with its fresh scan.
 
 Earlier versions closed or force-navigated user tabs during cleanup. Closing every targeted
 tab could close the windows containing them and quit Chrome; force-navigation could disrupt
@@ -115,6 +129,54 @@ best effort and the next-startup cleanup as a retry, not as verified revocation.
 Website sign-out is unavailable at close time — it needs live tabs and network — so close
 and startup both run the local-only path (`runLocalWipe`).
 
+Failed and unfinished domains remain in the startup retry list even if their cookies were
+already removed. A busy run does not mark shutdown cleanup complete. Restored-page reloads
+can create new cookies after verification; startup cleanup does not guarantee a persistently
+signed-out state.
+
+## Local cleanup boundary and evidence
+
+Domain grouping uses the full bundled ICANN + PRIVATE Public Suffix List, including wildcard
+and exception rules. Hosted tenants such as separate `github.io` sites must not collapse into
+one destructive target. Bare suffixes, malformed hosts, and non-registrable targets are refused.
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for provenance and refresh instructions.
+
+Cookie removal uses `chrome.cookies.remove` with URL, name, store ID, and partition key.
+Reads include ordinary and partitioned cookies in the current execution-context store.
+Every cookie counts in post-removal verification, including names not recognised as auth.
+Permission failures and unreadable jars are not interpreted as empty jars.
+
+`chrome.browsingData` is used only for the requested storage types, with concrete HTTP/HTTPS
+origins: the site's base/www origins plus matching cookie hosts and open-tab origins, including
+ports. Its broader cookie-domain expansion is intentionally avoided, because Chrome's suffix
+snapshot may differ from the bundled list. See the official
+[cookies API](https://developer.chrome.com/docs/extensions/reference/api/cookies) and
+[browsingData API](https://developer.chrome.com/docs/extensions/reference/api/browsingData).
+
+Only normal-profile cleanup is supported. Private windows/tabs are excluded, and destructive
+popup actions from Incognito are refused. Allowing the extension in Incognito enables the
+explicit private-store diagnostic, not cleanup across cookie stores.
+
+An empty cookie readback is point-in-time evidence, not proof of remote invalidation.
+Successful storage APIs acknowledge a request; contents are not independently inspected.
+Unseen storage-only origins, sessionStorage, page memory, other profiles, native apps, and
+future cookie regeneration remain outside the claim.
+
+## Concurrent and interrupted work
+
+One synchronous service-worker gate is acquired before the first await for both manual and
+local-only runs. A session-storage marker records activity but does not expire underneath a
+live run; a fresh worker treats an old marker as interruption evidence, not a live lock.
+Alarm failures cannot strand the gate. Wakeup alarms are not a worker-lifetime guarantee.
+
+The last report is checkpointed before work and after each site, with completed evidence
+and pending domains. The popup distinguishes a live run from an interrupted checkpoint and
+does not label unfinished targets as cleared. This is a progress journal, not automatic
+manual-run resumption.
+
+Privileged commands accept only the extension's named packaged UI pages. An extension ID
+alone is insufficient: content scripts share that ID, so sender origin/path is checked too.
+
 ## The onboarding gate
 
 `settings.onboarded` starts false, and `buildPlan` refuses every automatic trigger until it
@@ -131,10 +193,10 @@ and offers "manual only" for people who want the button without the automation.
 
 Three places where an earlier version could report success it had not earned:
 
-- **Partial wipes.** `browsingData.remove()` with several data types is all-or-nothing. The
-  first version caught the rejection, deleted cookies as a fallback, and returned ok — so a
-  deep wipe could silently degrade to cookies only. It now retries type by type and names
-  what survived.
+- **Partial wipes.** A rejected multi-type storage call cannot prove what completed. The
+  engine retries type by type and reports failures separately from cookie readback. A deep
+  wipe may not silently degrade to cookies only, and unavailable origin evidence makes the
+  storage result incomplete.
 - **No usable existing window.** A website sign-out attempt needs a real tab. If no existing
   normal window can host the temporary tab, the attempt is skipped and local cleanup is
   reported separately. The extension never creates or removes a browser window.
@@ -188,12 +250,12 @@ the account stayed live. Three holes allowed that result, and all three are now 
 - **A recipe must do something.** Every click in that recipe was `optional`, so it could
   finish having clicked nothing. `global` recipes must now carry a click that can fail the
   recipe, and the runner reports `none` when no click landed.
-- **A capability claim needs evidence.** Recipes carry a `verified` date, set only after
-  someone signed in on a second device, ran the recipe, and checked the second session.
-  Unverified `global` recipes are reported only as attempts at run time.
+- **Historical metadata is not runtime evidence.** A recipe's `capability` and `verified`
+  date never authorize a remote-revocation result. An independent session on a second
+  device also does not test a copied token from the original session.
 
-No bundled recipe has verified global capability. The extension therefore cannot currently
-report `revoked`; the four bundled recipes can at most produce **Sign-out attempted**.
+Neither bundled nor downloaded recipes can report `revoked`. All four bundled recipes can
+at most produce **Sign-out attempted**; legacy strong labels are rendered as unverified attempts.
 
 ## Federated sign-in
 
@@ -203,7 +265,8 @@ cookies come straight back from `accounts.google.com`, and from the user's side 
 simply did not happen.
 
 `src/core/identity.js` expands a target list to cover its sign-in siblings, restricted to
-domains the user actually has cookies for — otherwise a one-site logout would list a dozen
+the confirmed set for manual bulk runs and cookie candidates for other existing paths —
+otherwise a one-site logout would list a dozen
 properties nobody uses and look far more sweeping than it is.
 
 The membership rule is *shared authentication*, not shared ownership. Amazon owns Twitch,
@@ -233,7 +296,7 @@ protects nothing at all.
 
 "Protect everything" is one toggle away. It is offered, not assumed.
 
-Ignored sites are skipped by every automatic trigger *and* by "log out of all sessions".
+Ignored sites are skipped by every automatic trigger *and* by confirmed-account bulk sign-out.
 Only an explicit per-site action reaches them.
 
 ## Module boundaries
@@ -276,14 +339,14 @@ the signed update channel is tested but not pointed at a live host. Real-world s
 reach is measured in Diagnostics rather than assumed from automated tests.
 
 1. **More measured recipes.** Each one may upgrade a site from *cleared locally* to a
-   repeatable *sign-out attempted* path. Global revocation is claimed only after separate
-   second-device verification.
+   repeatable *sign-out attempted* path. Publish exact provider test evidence and its limits;
+   do not translate historical results into a current remote-revocation claim.
 2. **Publish the bundle host.** The update channel is built and tested; no host is live,
    which is why the feature ships switched off.
 3. **Tier 2: record-once.** For sites with no recipe, let the user perform a logout while
    the extension records the *DOM path*, not the request. Optional, opt-in contribution
    upstream: domain and selectors only, never URLs with IDs, never bodies or headers.
 4. **Session Inventory.**
-5. **Resumable runs.** Persist the run journal so an SW teardown mid-run resumes rather
-   than restarts.
+5. **Resumable manual runs.** Checkpoints now exist. Safe resumption still needs a fresh
+   scope/permission review and an explicit retry policy; it is not implemented.
 6. **Firefox target** behind the existing `platform/` boundary.

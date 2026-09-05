@@ -19,11 +19,11 @@ test('the site itself and its subdomains are trusted', () => {
   assert.ok(isTrustedLogoutDestination('https://a.b.c.example.com/out?x=1', 'example.com'));
 });
 
-test('recognised identity providers are trusted for any site', () => {
-  // A tenant's logout genuinely lives on the IdP, so these must work or Tier 4 is useless.
-  assert.ok(isTrustedLogoutDestination('https://acme.okta.com/oauth2/v1/logout', 'acme-corp.com'));
-  assert.ok(isTrustedLogoutDestination('https://login.microsoftonline.com/common/oauth2/v2.0/logout', 'contoso.com'));
-  assert.ok(isTrustedLogoutDestination('https://tenant.auth0.com/v2/logout', 'startup.io'));
+test('recognised providers do not authorize cross-account automation', () => {
+  // Recognising a provider cannot let an arbitrary site direct clicks into it.
+  assert.ok(!isTrustedLogoutDestination('https://acme.okta.com/oauth2/v1/logout', 'acme-corp.com'));
+  assert.ok(!isTrustedLogoutDestination('https://login.microsoftonline.com/common/oauth2/v2.0/logout', 'contoso.com'));
+  assert.ok(!isTrustedLogoutDestination('https://tenant.auth0.com/v2/logout', 'startup.io'));
 });
 
 test('an unrelated destination is refused', () => {

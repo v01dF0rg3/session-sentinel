@@ -13,22 +13,21 @@
  *      roadmap fetches them remotely; a recipe that can navigate anywhere is a much
  *      more dangerous object than one confined to the site it claims to log out of.
  *
- * So navigation is confined to the target site itself, or to a short list of identity
- * providers that legitimately host other sites' logout endpoints. Anything else is
+ * So navigation is confined to the target site itself. Recognising an identity provider
+ * is not permission to operate its account on another site's instruction. Anything else is
  * refused and reported as an unavailable sign-out attempt, which is honest: we cannot
  * follow an untrusted redirect merely to reach a logout control.
  *
  * Pure - no chrome.* - so the policy is unit-testable.
  */
 
-import { registrableDomain } from './domain.js';
+import { isCleanupDomain, registrableDomain } from './domain.js';
 
 /**
- * Identity providers that legitimately terminate sessions on behalf of other domains.
- * Kept deliberately short. A provider only belongs here if sending a logged-in user to
- * it, and clicking its confirm button, is safe regardless of which site asked.
+ * Known sign-in providers used only to interpret observed login returns. Membership does
+ * not authorize navigation, logout, or clicks on behalf of an unrelated target site.
  */
-const TRUSTED_IDP_DOMAINS = new Set([
+const KNOWN_IDP_DOMAINS = new Set([
   'okta.com',
   'oktapreview.com',
   'auth0.com',
@@ -66,15 +65,16 @@ export function isTrustedLogoutDestination(url, targetDomain) {
 
   // Plaintext logout would put the session cookie on the wire, and non-http schemes
   // (javascript:, data:, chrome-extension:) have no business here at all.
-  if (parsed.protocol !== 'https:') return false;
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.port) return false;
+  if (!isCleanupDomain(targetDomain)) return false;
 
   const host = parsed.hostname.toLowerCase();
   const registrable = registrableDomain(host);
 
-  if (registrable === targetDomain) return true;
-  if (TRUSTED_IDP_DOMAINS.has(registrable) || TRUSTED_IDP_DOMAINS.has(host)) return true;
-
-  return false;
+  // Recognising an identity provider is not authority to operate another account.
+  // A hostile site's discovery document must not steer clicks into Google, Microsoft,
+  // or an arbitrary SaaS tenant. Cross-site IdPs require a separate user-driven flow.
+  return registrable === targetDomain;
 }
 
 /**
@@ -106,5 +106,5 @@ export function describeRefusal(url, targetDomain) {
  */
 export function isIdentityProvider(host) {
   if (!host) return false;
-  return TRUSTED_IDP_DOMAINS.has(host) || TRUSTED_IDP_DOMAINS.has(registrableDomain(host));
+  return KNOWN_IDP_DOMAINS.has(host) || KNOWN_IDP_DOMAINS.has(registrableDomain(host));
 }

@@ -44,10 +44,18 @@
     </button>
     <p class="hint" id="scope-hint"></p>
 
+    <main class="popup-content">
     <div id="status" class="status" role="status" aria-live="polite" hidden></div>
 
+    <details id="run-evidence" class="run-evidence" hidden>
+      <summary id="run-evidence-title">Last cleanup: evidence and next steps</summary>
+      <p class="hint">Local results concern this Chrome profile only. Copied tokens, other devices,
+        unseen storage-only origins, and data held in open tabs are not verified safe.</p>
+      <div id="run-evidence-sites" class="run-evidence-sites"></div>
+    </details>
+
     <div id="crash-report" class="status red" hidden>
-      <strong>The browser closed during the last run.</strong>
+      <strong>The previous cleanup did not finish.</strong>
       <span id="crash-detail"></span>
       <button id="crash-dismiss" class="link" type="button" style="margin-top:6px">Dismiss</button>
     </div>
@@ -68,6 +76,7 @@
       <ul id="site-list" class="site-list" aria-label="Confirmed and possible accounts"></ul>
       <div id="list-actions" class="list-actions"></div>
     </section>
+    </main>
 
     <footer class="footer">
       <span id="last-run" class="muted"></span>

@@ -31,6 +31,7 @@ const USER_FACING_FILES = [
   '../src/ui/diagnostics.js',
   '../ARCHITECTURE.md',
   '../TESTING.md',
+  '../SECURITY.md',
   '../src/core/session-pages.js'
 ];
 

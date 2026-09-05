@@ -3,7 +3,7 @@
  * rendered and clicked in an ordinary browser tab. Dev harness only - never shipped.
  *
  * The fixture deliberately includes one of every outcome, so the honest-reporting path
- * (green only for 'revoked') is exercised rather than assumed.
+ * (no unverified green revocation result) is exercised rather than assumed.
  */
 
 (function () {
@@ -93,6 +93,8 @@
   ];
 
   const lastReport = {
+    status: 'complete',
+    pending: [],
     trigger: 'manual',
     startedAt: Date.now() - 9000,
     finishedAt: Date.now() - 2000,
@@ -104,6 +106,23 @@
       { domain: 'slack.com', tier: 'high', outcome: 'failed', detail: 'could not clear local data', tabsRefreshed: 0, verified: false }
     ]
   };
+
+  for (const site of lastReport.sites) {
+    site.serverAction = site.outcome === 'logoutAttempted' ? 'attempted' : 'notAttempted';
+    site.localCleanup = {
+      status: site.outcome === 'failed' ? 'incomplete' : 'complete',
+      cookies: site.outcome === 'failed' ? 'remaining' : 'cleared',
+      remainingCookies: site.outcome === 'failed' ? 2 : 0,
+      acceptedTypes: site.outcome === 'failed' ? [] : ['cookies', 'localStorage', 'serviceWorkers'],
+      failedTypes: site.outcome === 'failed' ? ['cookies'] : [],
+      knownOriginCount: 6,
+      warnings: []
+    };
+  }
+  if (previewQuery.get('run') === 'interrupted') {
+    lastReport.status = 'running';
+    lastReport.pending = ['unfinished.example', 'another.example'];
+  }
 
   // Mirrors what the service worker derives from tabs, top sites and past runs. The real
   // partition is exercised by tests/relevance.test.mjs; this fixture exists so the popup
@@ -156,12 +175,12 @@
   const recovery = { done: [], minTier: 'high', startedAt: Date.now() };
 
   const crashTrail = {
-    value: {
+    value: previewQuery.get('run') === 'interrupted' ? {
       step: 'wipe',
       description: 'clearing cookies for this site',
       domain: 'youtube.com',
       at: Date.now() - 60000
-    }
+    } : null
   };
 
   const delay = (value, ms = 350) => new Promise((r) => setTimeout(() => r(value), ms));
@@ -214,7 +233,7 @@
     scripting: { executeScript: () => delay([{ result: { ok: true, detail: 'found' } }], 20) },
     notifications: { create: () => delay('n1', 10), clear: () => delay(true, 5) },
     runtime: {
-      getManifest: () => ({ version: '0.4.0', permissions: ['storage','alarms','idle','cookies','browsingData','scripting','tabs','notifications'] }),
+      getManifest: () => ({ version: '0.36.0', permissions: ['storage','alarms','idle','cookies','browsingData','scripting','tabs','notifications'] }),
       async sendMessage(message) {
         if (previewQuery.get('recovery') === 'save-error' && ['markRecoveryStep', 'setRecoveryScope', 'resetRecovery'].includes(message?.type)) {
           return delay({ error: 'Recovery fixture: storage unavailable' }, 20);
@@ -328,7 +347,8 @@
               { domain: 'somerandomblog.net', outcome: 'cleared', method: 'none', attempted: false, at: Date.now()-1e6, runs: 1 }
             ];
             const byMethod = {};
-            let attempted=0, reached=0, verifiedRevoked=0, cleared=0;
+            let attempted=0, reached=0, cleared=0;
+            const verifiedRevoked = 0;
             const needs=[];
             for (const e of entries) {
               if (!e.attempted) continue;
@@ -336,7 +356,6 @@
               byMethod[e.method] = (byMethod[e.method]??0)+1;
               if (e.outcome==='logoutAttempted'||e.outcome==='revoked') {
                 reached++;
-                if (e.outcome==='revoked') verifiedRevoked++;
               } else { cleared++; needs.push(e); }
             }
             return delay({ entries, summary: {
@@ -418,7 +437,10 @@
       openOptionsPage() {
         location.href = './options-preview.html';
       },
-      getURL: (path) => `/${path}`
+      getURL: (path) => {
+        const page = /^src\/ui\/(popup|options|welcome|recovery|diagnostics)\.html$/.exec(path);
+        return page ? `/dev/${page[1]}-preview.html` : `/${path}`;
+      }
     }
   };
 })();

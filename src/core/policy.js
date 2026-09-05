@@ -119,11 +119,11 @@ export const DEFAULT_SETTINGS = {
 };
 
 /**
- * Data types cleared at each depth, as `chrome.browsingData` keys.
+ * Data types requested at each depth. Cookies use the explicit cookies API; the other
+ * types use origin-scoped `chrome.browsingData` calls.
  *
- * `sessionStorage` is absent from the API by design - it dies with the tab, which the
- * engine closes anyway. `cache` and `history` are deliberately excluded: they are not
- * session material and clearing them is a privacy feature, not a logout feature.
+ * `sessionStorage` and live page memory are not cleared by this path; user tabs are never
+ * closed. HTTP `cache` and `history` are deliberately excluded from session cleanup.
  *
  * @type {Record<WipeDepth, string[]>}
  */

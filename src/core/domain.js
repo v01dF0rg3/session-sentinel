@@ -1,35 +1,12 @@
 /**
- * Registrable-domain ("eTLD+1") extraction without shipping the full Public Suffix List.
- *
- * A compact suffix subset covers the multi-label public suffixes that actually show up
- * in browser cookie jars. Anything not listed falls back to "last two labels", which is
- * correct for every single-label TLD. Getting this wrong only ever mis-groups sites in
- * the UI - destruction is always driven from concrete origins, never from this guess.
+ * Site boundaries are security boundaries, not just display grouping. Include the full
+ * ICANN + PRIVATE Public Suffix List so unrelated hosted tenants are never siblings.
+ * The bundled snapshot is updated at build time, never fetched from a user's browser.
  */
 
-/** Multi-label public suffixes, longest-match wins. */
-const MULTI_LABEL_SUFFIXES = new Set([
-  'co.uk', 'org.uk', 'me.uk', 'ltd.uk', 'plc.uk', 'net.uk', 'sch.uk', 'ac.uk', 'gov.uk',
-  'com.au', 'net.au', 'org.au', 'edu.au', 'gov.au', 'id.au',
-  'co.nz', 'net.nz', 'org.nz', 'govt.nz', 'ac.nz',
-  'co.za', 'org.za', 'net.za', 'gov.za', 'ac.za',
-  'com.br', 'net.br', 'org.br', 'gov.br', 'edu.br',
-  'com.mx', 'org.mx', 'gob.mx', 'com.ar', 'gob.ar', 'com.co', 'gov.co',
-  'co.jp', 'or.jp', 'ne.jp', 'ac.jp', 'go.jp', 'lg.jp',
-  'co.kr', 'or.kr', 'go.kr', 'ac.kr',
-  'com.cn', 'net.cn', 'org.cn', 'gov.cn', 'edu.cn', 'com.hk', 'org.hk', 'gov.hk',
-  'com.tw', 'org.tw', 'gov.tw', 'com.sg', 'gov.sg', 'com.my', 'gov.my',
-  'co.in', 'net.in', 'org.in', 'gov.in', 'ac.in', 'co.id', 'go.id',
-  'com.tr', 'gov.tr', 'com.ua', 'com.pl', 'gov.pl', 'com.ru', 'gov.ru',
-  'co.il', 'org.il', 'gov.il', 'com.sa', 'gov.sa', 'ae.org',
-  'com.ph', 'gov.ph', 'com.vn', 'gov.vn', 'co.th', 'go.th', 'or.th',
-  'gov.ie', 'gouv.fr', 'gov.it', 'gob.es', 'gov.gr', 'gov.pt',
-  // Suffixes where each subdomain is an independent security origin.
-  'github.io', 'gitlab.io', 'pages.dev', 'workers.dev', 'vercel.app', 'netlify.app',
-  'herokuapp.com', 'firebaseapp.com', 'web.app', 'appspot.com', 'azurewebsites.net',
-  'cloudfront.net', 's3.amazonaws.com', 'blob.core.windows.net',
-  'myshopify.com', 'zendesk.com', 'atlassian.net', 'sharepoint.com', 'freshdesk.com'
-]);
+import { PUBLIC_SUFFIX_RULES } from '../../data/public-suffix-rules.js';
+
+const SUFFIXES = new Set(PUBLIC_SUFFIX_RULES);
 
 /**
  * Strip a leading dot from a cookie `domain` attribute.
@@ -37,7 +14,22 @@ const MULTI_LABEL_SUFFIXES = new Set([
  * @returns {string}
  */
 export function normalizeCookieDomain(domain) {
-  return domain.replace(/^\./, '').toLowerCase();
+  if (typeof domain !== 'string') return '';
+  const host = domain.replace(/^\./, '').replace(/\.$/, '').toLowerCase();
+  if (!host || /[\s/@?#\\]/.test(host)) return '';
+  try {
+    const parsed = new URL(`https://${host}`);
+    if (parsed.port || parsed.username || parsed.password) return '';
+    // A hostname, never a host:port (including an explicit default port).
+    if (host.includes(':') && !/^\[[0-9a-f:]+\]$/.test(host)) return '';
+    if (parsed.hostname.startsWith('[')) return parsed.hostname;
+    const ascii = parsed.hostname;
+    if (ascii.length > 253 || ascii.split('.').some((label) =>
+      !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))) return '';
+    return ascii;
+  } catch {
+    return '';
+  }
 }
 
 /**
@@ -52,21 +44,27 @@ export function registrableDomain(hostname) {
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(':')) return host;
 
   const labels = host.split('.');
-  if (labels.length <= 2) return host;
-
-  // Longest matching multi-label suffix wins, so `s3.amazonaws.com` beats `amazonaws.com`.
-  for (let take = Math.min(3, labels.length - 1); take >= 2; take--) {
-    const suffix = labels.slice(-take).join('.');
-    if (MULTI_LABEL_SUFFIXES.has(suffix)) {
-      return labels.slice(-(take + 1)).join('.');
+  let suffixLength = 1; // PSL implicit '*' rule for an unknown TLD.
+  for (let index = 0; index < labels.length; index++) {
+    const suffix = labels.slice(index).join('.');
+    if (SUFFIXES.has(`!${suffix}`)) return labels.slice(index).join('.');
+    if (SUFFIXES.has(suffix)) suffixLength = Math.max(suffixLength, labels.length - index);
+    if (index > 0 && SUFFIXES.has(`*.${suffix}`)) {
+      suffixLength = Math.max(suffixLength, labels.length - index + 1);
     }
   }
-  return labels.slice(-2).join('.');
+  return labels.length > suffixLength ? labels.slice(-(suffixLength + 1)).join('.') : '';
+}
+
+/** Only an exact normalized site boundary may reach a destructive API. */
+export function isCleanupDomain(domain) {
+  return typeof domain === 'string' && domain !== 'localhost' && domain !== '' &&
+    normalizeCookieDomain(domain) === domain && registrableDomain(domain) === domain;
 }
 
 /**
- * Best-effort origin for a registrable domain. Everything relevant is HTTPS in practice,
- * and `browsingData` keys cookie removal by registrable domain regardless of scheme.
+ * Default HTTPS address for a registrable site. This is not a complete storage-origin
+ * inventory; cleanup uses the separately validated origin scope.
  * @param {string} domain
  * @returns {string}
  */

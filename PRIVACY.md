@@ -1,6 +1,6 @@
 # Privacy Policy — Session Sentinel
 
-Last updated: 4 September 2026. Applies to version 0.35.0.
+Last updated: 5 September 2026. Applies to version 0.36.0.
 
 ## The short version
 
@@ -15,13 +15,17 @@ recipe host can see an ordinary request and its IP address.
 | Data | Why | Where it goes |
 |---|---|---|
 | Your cookies (names, domains, flags, and value length) | To find login evidence and delete site cookies. Chrome returns cookie values, but Session Sentinel does not display, store, compare, or transmit their contents. | Never leaves your device |
-| Open tab URLs | To identify the current site, find tabs on a selected domain, and optionally reload them after local cleanup | Never leaves your device |
+| Open tab URLs | To identify the current site, discover storage origins, find tabs on a selected domain, and optionally reload them after local cleanup | Never leaves your device; cleanup origin hints omit paths and are not persisted |
 | Limited page UI (sign-in, sign-out, account-control text, links, and attributes) | To find positive login evidence and activate a site's own sign-in or sign-out control | Used in memory on your device; form values and passwords are not read |
 | Site storage (localStorage, IndexedDB, service workers, cache storage) | Deleted, per site, when you clear a session | Never read into the extension; only deleted |
-| Your settings and last run report | To remember your preferences and show what happened | `chrome.storage.local`, on your device |
+| Your settings and last run report | To remember preferences, completed results, unfinished domains, and cookie/storage API evidence | `chrome.storage.local`, on your device |
 
 The extension does not read form values, passwords, or Chrome browsing history. It does not
 transmit the limited page evidence described above.
+
+Normal cleanup does not sweep Incognito cookie stores or other Chrome profiles. Temporary
+origin hints contain only site addresses, not cookie contents or account labels. Progress
+checkpoints and pending startup retry domains stay local; they do not contain tokens.
 
 ## Network requests it makes
 
@@ -46,6 +50,14 @@ closing every Incognito window erases the temporary private cookies and site dat
 If optional recipe updates are enabled, one request is made to the public bundle host as
 described below. No per-site request is sent to that host, and no account or site list is
 uploaded.
+
+The one-click diagnostics also create two cookies containing a fixed, public test string
+under `session-sentinel-selftest.invalid`, then delete them and check the result. These
+are not credentials and do not contact a real website. Any leftovers expire within two
+minutes. Storage cleanup tests use the same reserved domain.
+
+The Public Suffix List used to distinguish site boundaries is bundled with the extension.
+Only a maintainer's build-time updater downloads it; installed copies make no PSL request.
 
 ## What it does not do
 

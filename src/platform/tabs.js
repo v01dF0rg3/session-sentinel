@@ -29,7 +29,8 @@
  */
 export async function findUsableWindow() {
   try {
-    const windows = await chrome.windows.getAll({ windowTypes: ['normal'] });
+    const windows = (await chrome.windows.getAll({ windowTypes: ['normal'] })).filter((w) =>
+      Boolean(w.incognito) === Boolean(chrome.extension?.inIncognitoContext));
     if (windows.length === 0) return null;
     const focused = windows.find((w) => w.focused && w.id !== undefined);
     return focused?.id ?? windows.find((w) => w.id !== undefined)?.id ?? null;
@@ -48,7 +49,8 @@ export async function findUsableWindow() {
 export async function openTab(windowId, url, timeoutMs) {
   const tab = await chrome.tabs.create({ windowId, url, active: false });
   if (!tab.id) throw new Error('tab creation failed');
-  await waitForLoad(tab.id, timeoutMs);
+  try { await waitForLoad(tab.id, timeoutMs); }
+  catch (error) { await closeTab(tab.id); throw error; }
   return tab.id;
 }
 
@@ -84,6 +86,7 @@ export async function waitForLoad(tabId, timeoutMs) {
     }
     await sleep(200);
   }
+  throw new Error('page did not finish loading before the timeout');
 }
 
 /**
@@ -125,6 +128,7 @@ export async function findTabsForDomain(domain) {
   try {
     for (const tab of await chrome.tabs.query({})) {
       if (!tab.id || !tab.url) continue;
+      if (Boolean(tab.incognito) !== Boolean(chrome.extension?.inIncognitoContext)) continue;
       let host;
       try {
         host = new URL(tab.url).hostname.toLowerCase();

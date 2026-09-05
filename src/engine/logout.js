@@ -3,12 +3,12 @@
  * a temporary background tab inside an existing window, on the site's own origin.
  *
  *   Tier 3  curated recipe        - site-specific sign-out flow
- *   Tier 4  OIDC RP-initiated     - generic, covers a lot of Okta/Entra/Auth0 SaaS
+ *   Tier 4  OIDC RP-initiated     - advertised HTTPS endpoints on the target site only
  *   Tier 1  heuristic             - find and click whatever reads as a logout control
  *
  * Every path reports honestly. Reaching an endpoint or clicking a control proves only that
  * sign-out was attempted; it does not prove that the server rejected a copied token.
- * Only a separately verified revoke-everywhere recipe may return 'revoked'.
+ * Historical recipe metadata never upgrades a run to verified revocation.
  */
 
 import { heuristicRecipe, isValidRecipe } from '../core/recipes.js';
@@ -16,6 +16,14 @@ import { findActiveRecipe } from '../platform/recipe-store.js';
 import { describeRefusal, isTrustedLogoutDestination } from '../core/trust.js';
 import { pageStep } from './step-runner.js';
 import { closeTab, navigateTab, openTab, sleep } from '../platform/tabs.js';
+import { registrableDomain } from '../core/domain.js';
+
+/** Recheck after EVERY navigation and before injection; the page guards the race too. */
+async function checkedOrigin(tabId, domain) {
+  const tab = await chrome.tabs.get(tabId);
+  if (!tab.url || !isTrustedLogoutDestination(tab.url, domain)) throw new Error(describeRefusal(tab.url ?? '', domain));
+  return new URL(tab.url).origin;
+}
 
 /**
  * @typedef {'recipe' | 'oidc' | 'path' | 'home' | 'none'} LogoutMethod
@@ -23,7 +31,7 @@ import { closeTab, navigateTab, openTab, sleep } from '../platform/tabs.js';
 
 /**
  * @typedef {object} LogoutAttempt
- * @property {'revoked' | 'attempted' | 'none'} result
+ * @property {'attempted' | 'none'} result
  * @property {string} detail
  * @property {LogoutMethod} [method] Which tier actually did the work. Recorded rather than
  *   inferred from `detail`, so coverage can be counted instead of guessed at.
@@ -40,6 +48,7 @@ import { closeTab, navigateTab, openTab, sleep } from '../platform/tabs.js';
  */
 export async function runRecipe(recipe, windowId, timeoutMs) {
   if (!isValidRecipe(recipe)) return { result: 'none', detail: 'malformed recipe' };
+  const domain = registrableDomain(recipe.domain.startsWith('https://') ? new URL(recipe.domain).hostname : recipe.domain);
 
   const deadline = Date.now() + timeoutMs;
   /** @type {number | null} */
@@ -69,21 +78,18 @@ export async function runRecipe(recipe, windowId, timeoutMs) {
 
       if (step.op === 'navigate') {
         const url = step.url ?? '';
-        try {
-          usedLogoutRoute ||= /(^|\/)(logout|signout|sign-out|sign_out|log-out|log_out)(\/|$)/i.test(
-            new URL(url).pathname
-          );
-        } catch {
-          // Validation handles malformed destinations. This flag only affects wording.
-        }
         const remaining = Math.max(2000, deadline - Date.now());
         if (tabId === null) tabId = await openTab(windowId, url, remaining);
         else await navigateTab(tabId, url, remaining);
+        await checkedOrigin(tabId, domain);
+        usedLogoutRoute ||= /(^|\/)(logout|signout|sign-out|sign_out|log-out|log_out)(\/|\.|$)/i.test(new URL(url).pathname);
+        confirmedPresent.clear(); // Presence on a previous document proves nothing here.
         lastDetail = 'navigated';
         continue;
       }
 
       if (tabId === null) return { result: 'none', detail: 'recipe did not open a page' };
+      const expectedOrigin = await checkedOrigin(tabId, domain);
 
       // Refuse to assert the absence of something never seen present. Failing here is
       // the point: it turns a meaningless pass into an honest "could not confirm".
@@ -97,7 +103,8 @@ export async function runRecipe(recipe, windowId, timeoutMs) {
       const [outcome] = await chrome.scripting.executeScript({
         target: { tabId },
         func: pageStep,
-        args: [step]
+        args: [{ ...step, timeoutMs: Math.max(1, Math.min(step.timeoutMs ?? 8000, deadline - Date.now())),
+          ...(step.op === 'sleep' ? { ms: Math.max(0, Math.min(step.ms, deadline - Date.now())) } : {}) }, expectedOrigin]
       });
       const stepResult = /** @type {{ ok: boolean, detail: string }} */ (outcome?.result ?? {
         ok: false,
@@ -130,22 +137,14 @@ export async function runRecipe(recipe, windowId, timeoutMs) {
       };
     }
 
-    // The strong result is reserved for a global recipe whose behavior was checked on a
-    // second device. It says that verified recipe completed, not that this extension read
-    // the provider's token database. An unverified global recipe remains only an attempt.
-    if (recipe.capability === 'global' && !recipe.verified) {
-      return {
-        result: 'attempted',
-        detail: `${recipe.note ?? lastDetail} (revoke-everywhere is unverified; no server-side invalidation is claimed)`
-      };
-    }
-
+    // Historical test dates cannot prove the current server rejected a copied token.
+    // A recipe, including a tested global recipe, can only report an attempted action.
     return {
-      result: recipe.capability === 'global' ? 'revoked' : 'attempted',
-      detail: recipe.note ?? lastDetail
+      result: attemptedResult(),
+      detail: `${recipe.note ?? lastDetail} (server-side invalidation is unverified for this run)`
     };
   } catch (error) {
-    return { result: 'none', detail: error instanceof Error ? error.message : String(error) };
+    return { result: attemptedResult(), detail: error instanceof Error ? error.message : String(error) };
   } finally {
     if (tabId !== null) await closeTab(tabId);
   }
@@ -166,8 +165,8 @@ const LOGOUT_PATHS = ['/logout', '/signout', '/sign-out', '/users/sign_out', '/a
  * appear and disappear - which happened with proton.me/logout, and looks exactly like the
  * extension is broken. A HEAD request costs nothing and is invisible.
  *
- * Only an explicit 404 or 410 rules a path out. Plenty of sites answer 405 to HEAD, or
- * redirect an anonymous request to a login page; neither means the path is absent.
+ * Only a successful response or HEAD-not-supported (405) is a candidate. Redirects,
+ * errors, and timeouts are not followed or treated as evidence that a route exists.
  *
  * @param {string} domain
  * @param {number} budgetMs
@@ -186,10 +185,11 @@ export async function findLogoutPath(domain, budgetMs = 6000) {
         const response = await fetch(url, {
           method: 'HEAD',
           credentials: 'omit',
-          redirect: 'follow',
+          redirect: 'error',
+          referrerPolicy: 'no-referrer',
           signal: AbortSignal.timeout(Math.max(500, Math.min(2500, deadline - Date.now())))
         });
-        if (response.status !== 404 && response.status !== 410) return url;
+        if (response.ok || response.status === 405) return url;
       } catch {
         // Network error, CORS, or timeout tells us nothing either way. Move on rather
         // than opening a tab on a URL we have no evidence for.
@@ -202,24 +202,40 @@ export async function findLogoutPath(domain, budgetMs = 6000) {
 /**
  * Tier 4 - OpenID Connect RP-initiated logout.
  *
- * Free coverage for anything sitting behind a standards-compliant IdP. Discovery is a
- * plain unauthenticated GET, so it is safe to do from the service worker; only the
- * logout itself needs a tab.
+ * Discovery uses a bounded, credentialless GET without redirects. Only an HTTPS endpoint
+ * on the target's own registrable site is eligible; cross-site providers are not followed.
  *
  * @param {string} domain
  * @returns {Promise<string | null>} end_session_endpoint, if the site advertises one.
  */
-export async function discoverOidcLogout(domain) {
+export async function discoverOidcLogout(domain, budgetMs = 4000) {
+  const deadline = Date.now() + budgetMs;
   const candidates = [
     `https://${domain}/.well-known/openid-configuration`,
     `https://www.${domain}/.well-known/openid-configuration`
   ];
 
   for (const url of candidates) {
+    if (Date.now() >= deadline) return null;
     try {
-      const response = await fetch(url, { credentials: 'omit', redirect: 'follow' });
+      const response = await fetch(url, { credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer',
+        signal: AbortSignal.timeout(Math.max(1, Math.min(2000, deadline - Date.now()))) });
       if (!response.ok) continue;
-      const config = await response.json();
+      // Discovery is untrusted input. Stream with a cap; a declared size is not a cap.
+      const reader = response.body?.getReader();
+      if (!reader) continue;
+      const decoder = new TextDecoder();
+      let body = '', bytes = 0;
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          bytes += value.byteLength;
+          if (bytes > 128 * 1024) { await reader.cancel(); throw new Error('oversized OIDC discovery'); }
+          body += decoder.decode(value, { stream: true });
+        }
+      } finally { reader.releaseLock(); }
+      const config = JSON.parse(body + decoder.decode());
       const endpoint = config?.end_session_endpoint;
       if (typeof endpoint !== 'string') continue;
 
@@ -246,6 +262,7 @@ export async function discoverOidcLogout(domain) {
  * @returns {Promise<LogoutAttempt>}
  */
 export async function runOidcLogout(endpoint, domain, windowId, timeoutMs) {
+  if (!isTrustedLogoutDestination(endpoint, domain)) return { result: 'none', detail: describeRefusal(endpoint, domain) };
   /** @type {number | null} */
   let tabId = null;
   try {
@@ -267,9 +284,9 @@ export async function runOidcLogout(endpoint, domain, windowId, timeoutMs) {
         {
           op: 'clickText',
           selector: 'button, input[type="submit"], a[role="button"], a',
-          text: 'sign out|log out|logout|yes|confirm|continue',
+          text: 'sign out|log out|logout',
           optional: true
-        }
+        }, new URL(landed.url).origin
       ]
     });
     await sleep(1200);
@@ -304,7 +321,7 @@ export async function attemptServerLogout(domain, windowId, timeoutMs) {
   }
 
   if (remaining() > 4000) {
-    const endpoint = await discoverOidcLogout(domain);
+    const endpoint = await discoverOidcLogout(domain, Math.min(4000, remaining()));
     if (endpoint) {
       const attempt = await runOidcLogout(endpoint, domain, windowId, remaining());
       if (attempt.result !== 'none') return { ...attempt, method: 'oidc' };

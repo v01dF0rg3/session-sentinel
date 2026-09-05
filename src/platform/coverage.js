@@ -20,8 +20,9 @@ const MAX_ENTRIES = 500;
  * @param {CoverageEntry['outcome']} outcome
  * @param {import('../engine/logout.js').LogoutMethod} method
  * @param {boolean} attempted
+ * @param {'attempted' | 'notAttempted'} [serverAction]
  */
-export async function recordOutcome(domain, outcome, method, attempted) {
+export async function recordOutcome(domain, outcome, method, attempted, serverAction) {
   try {
     const stored = await chrome.storage.local.get(KEY);
     /** @type {Record<string, CoverageEntry>} */
@@ -33,6 +34,7 @@ export async function recordOutcome(domain, outcome, method, attempted) {
       outcome,
       method,
       attempted,
+      ...(serverAction ? { serverAction } : {}),
       at: Date.now(),
       runs: (previous?.runs ?? 0) + 1
     };

@@ -16,6 +16,7 @@
 
 import { closeTab, findUsableWindow, sleep } from '../platform/tabs.js';
 import { discoverSessions, likelyLoggedIn, wipeSite } from '../platform/sessions.js';
+import { COOKIE_TEST_DOMAIN, testCookieCleanup } from '../platform/cookie-selftest.js';
 import { getActiveRecipes } from '../platform/recipe-store.js';
 import { DEPTH_DATA_TYPES } from '../core/policy.js';
 import { pageStep } from '../engine/step-runner.js';
@@ -27,8 +28,8 @@ import { authCookieNames, probeAnonymousCookies } from '../platform/incognito-pr
 /** Newline, named so the escape survives every layer of tooling between here and disk. */
 const BREAK = String.fromCharCode(10);
 
-/** Reserved TLD: guaranteed never to resolve, so clearing its data is a true no-op. */
-const TEST_DOMAIN = 'session-sentinel-selftest.invalid';
+/** Only this reserved domain is used for temporary public diagnostic canaries. */
+const TEST_DOMAIN = COOKIE_TEST_DOMAIN;
 
 /** @type {Array<{ name: string, status: 'pass'|'fail'|'skip', detail: string }>} */
 const results = [];
@@ -158,14 +159,19 @@ async function run() {
     };
   });
 
-  await check('Cookie stores (covers incognito when allowed)', async () => {
+  await check('Cookie stores visible (not cleanup coverage)', async () => {
     const stores = await chrome.cookies.getAllCookieStores();
-    return { detail: `${stores.length} store${stores.length === 1 ? '' : 's'} visible` };
+    return { detail: `${stores.length} store${stores.length === 1 ? '' : 's'} visible; account cleanup operates the normal profile, not Incognito` };
+  });
+
+  await check('Ordinary and partitioned cookie deletion', async () => {
+    const result = await testCookieCleanup();
+    return { status: result.ok ? 'pass' : 'fail', detail: result.detail };
   });
 
   // --- the destructive path, against a domain that cannot exist ------------
   await check('Per-type data clearing (the deep-wipe path)', async () => {
-    const types = DEPTH_DATA_TYPES.deep;
+    const types = DEPTH_DATA_TYPES.deep.filter((type) => type !== 'cookies');
     /** @type {string[]} */
     const ok = [];
     /** @type {string[]} */
@@ -195,7 +201,7 @@ async function run() {
   await check('Full wipe routine on a throwaway domain', async () => {
     const result = await wipeSite(TEST_DOMAIN, DEPTH_DATA_TYPES.deep);
     if (!result.ok) return { status: 'fail', detail: result.error ?? 'wipe reported failure' };
-    return { detail: `cleared ${result.cleared.length} data types, ${result.failed.length} unavailable` };
+    return { detail: `accepted ${result.cleared.length} cleanup types and verified no test cookies; ${result.failed.length} unavailable` };
   });
 
   // --- the hidden work window ---------------------------------------------
@@ -230,7 +236,7 @@ async function run() {
       const [outcome] = await chrome.scripting.executeScript({
         target: { tabId },
         func: pageStep,
-        args: [{ op: 'waitFor', selector: 'body', timeoutMs: 5000 }]
+        args: [{ op: 'waitFor', selector: 'body', timeoutMs: 5000 }, 'https://example.com']
       });
 
       return outcome?.result?.ok

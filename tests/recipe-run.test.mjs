@@ -90,7 +90,7 @@ test('asserting absence IS accepted once the selector was seen present', async (
     10000
   );
 
-  assert.equal(result.result, 'revoked');
+  assert.equal(result.result, 'attempted');
 });
 
 test('an all-optional global recipe is rejected before it can run', async () => {
@@ -152,7 +152,7 @@ test('an unverified global recipe is reported only as an attempt', async () => {
   assert.match(result.detail, /unverified/);
 });
 
-test('a verified global recipe that does its work may claim revoked', async () => {
+test('a historical verification date cannot prove this run revoked a copied token', async () => {
   fakePage(() => true);
   const { runRecipe } = await load();
 
@@ -165,7 +165,8 @@ test('a verified global recipe that does its work may claim revoked', async () =
     10000
   );
 
-  assert.equal(result.result, 'revoked');
+  assert.equal(result.result, 'attempted');
+  assert.match(result.detail, /unverified for this run/);
 });
 
 test('a failed non-optional step stops the recipe claiming success', async () => {
@@ -183,4 +184,56 @@ test('a failed non-optional step stops the recipe claiming success', async () =>
 
   assert.notEqual(result.result, 'revoked');
   assert.match(result.detail, /failed/);
+});
+
+test('a recipe redirect to an unrelated site stops before any injection', async () => {
+  const { executed } = fakePage(() => true);
+  chrome.tabs.get = async () => ({ id: 5, status: 'complete', windowId: 1, url: 'https://attacker.test/' });
+  const { runRecipe } = await load();
+  const result = await runRecipe(base([{ op: 'clickText', selector: 'button', text: 'sign out' }]), 1, 10000);
+  assert.equal(result.result, 'none');
+  assert.match(result.detail, /untrusted destination/);
+  assert.equal(executed.length, 0);
+});
+
+test('a redirect caused by a click is checked before the next action', async () => {
+  const { executed } = fakePage(() => true);
+  const realExecute = chrome.scripting.executeScript;
+  chrome.scripting.executeScript = async (input) => {
+    assert.equal(input.args[1], 'https://example.com', 'injected code must receive the authorized origin');
+    const result = await realExecute(input);
+    chrome.tabs.get = async () => ({ id: 5, status: 'complete', windowId: 1, url: 'https://attacker.test/' });
+    return result;
+  };
+  const { runRecipe } = await load();
+  const result = await runRecipe(base([
+    { op: 'clickText', selector: 'button', text: 'sign out' },
+    { op: 'clickText', selector: 'button', text: 'confirm' }
+  ]), 1, 10000);
+  assert.deepEqual(executed, ['clickText']);
+  assert.equal(result.result, 'attempted');
+  assert.match(result.detail, /untrusted destination/);
+});
+
+test('OIDC refuses an off-site endpoint before opening a tab', async () => {
+  fakePage(() => true);
+  chrome.tabs.create = async () => { assert.fail('untrusted endpoint must never be opened'); };
+  const { runOidcLogout } = await load();
+  assert.equal((await runOidcLogout('https://accounts.google.com/Logout', 'attacker.example', 1, 1000)).result, 'none');
+});
+
+test('OIDC discovery is bounded and cannot opt into credentials or redirects', async () => {
+  const originalFetch = globalThis.fetch;
+  const { discoverOidcLogout } = await load();
+  try {
+    globalThis.fetch = async (_url, options) => {
+      assert.equal(options.credentials, 'omit');
+      assert.equal(options.redirect, 'error');
+      assert.ok(options.signal);
+      return new Response(JSON.stringify({ end_session_endpoint: 'https://example.com/logout' }));
+    };
+    assert.equal(await discoverOidcLogout('example.com'), 'https://example.com/logout');
+    globalThis.fetch = async () => new Response('x'.repeat(128 * 1024 + 1));
+    assert.equal(await discoverOidcLogout('example.com'), null);
+  } finally { globalThis.fetch = originalFetch; }
 });

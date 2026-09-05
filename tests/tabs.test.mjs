@@ -243,3 +243,35 @@ test('findUsableWindow returns null when the browser has no window open', async 
   const { findUsableWindow } = await load();
   assert.equal(await findUsableWindow(), null);
 });
+
+test('normal-profile work never borrows a focused Incognito window or reloads private tabs', async () => {
+  fakeChrome({
+    windows: [{ id: 1, focused: false }, { id: 2, focused: true, incognito: true }],
+    tabs: [
+      { id: 10, windowId: 1, url: 'https://github.com/' },
+      { id: 20, windowId: 2, url: 'https://github.com/', incognito: true }
+    ]
+  });
+  const { findUsableWindow, findTabsForDomain } = await load();
+  assert.equal(await findUsableWindow(), 1);
+  assert.deepEqual(await findTabsForDomain('github.com'), [10]);
+  chrome.windows.getAll = async () => [{ id: 2, focused: true, incognito: true }];
+  assert.equal(await findUsableWindow(), null);
+});
+
+test('a work-tab load timeout rejects and closes only its own temporary tab', async () => {
+  const state = {
+    windows: [{ id: 1 }],
+    tabs: [{ id: 10, windowId: 1, url: 'https://unrelated.example/' }]
+  };
+  const spy = fakeChrome(state);
+  chrome.tabs.create = async () => {
+    const tab = { id: 900, windowId: 1, status: 'loading' };
+    state.tabs.push(tab);
+    return tab;
+  };
+  const { openTab } = await load();
+  await assert.rejects(openTab(1, 'https://github.com/logout', 0), /timeout/);
+  assert.deepEqual(spy.removedTabs, [900]);
+  assert.deepEqual(state.tabs.map((t) => t.id), [10]);
+});

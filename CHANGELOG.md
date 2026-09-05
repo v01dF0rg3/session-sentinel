@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.36.0 — 5 September 2026
+
+### Tighter cleanup boundaries and evidence you can inspect
+
+Cookie cleanup now removes each cookie explicitly, including its partition identity, and
+reads back every remaining cookie—not just authentication-looking names. It no longer uses
+the broader browsing-data cookie sweep or touches other cookie stores. Missing site access
+cannot turn an unreadable jar into a successful result. Chrome 119 or newer is now required.
+
+Site boundaries use the full bundled ICANN + PRIVATE Public Suffix List. Storage cleanup
+targets concrete matching origins, including cookie subdomains and open-tab ports. Origin
+hints are captured before website sign-out can erase the cookies that revealed them.
+Rejected storage types, unavailable origin evidence, and cookies recreated during a run
+produce **Needs attention**, not a clean result.
+
+**Last cleanup** now preserves per-site website actions, cookie readback, storage API
+acknowledgments, and unfinished targets. Expanded reports no longer hide the recovery and
+settings footer, and the current site's name gets a full row. A checkpoint is not a claim
+of automatic manual-run resumption. Failed startup targets survive partial cleanup and
+overlapping runs share one synchronous gate, even if alarms fail or a run lasts longer
+than five minutes.
+
+### More conservative website automation
+
+- OIDC discovery and route probes have bounded requests and refuse redirects/credentials.
+  An unrelated site can no longer steer logout automation into a recognised identity provider.
+  This intentionally reduces generic cross-site logout coverage.
+- Landing URLs and the exact page origin are checked before injected actions. Cross-origin
+  links, form destinations, and submit-button overrides are refused; generic “yes/confirm”
+  clicks are gone. Off-viewport and click-through controls fail closed.
+- Recipe metadata can never produce verified remote revocation, even if it carries a
+  historical verification date. Malformed recipes fail validation without throwing.
+- Privileged commands require a named packaged extension UI page. Normal-profile work
+  excludes Incognito windows/tabs, and private popup account actions explain that cleanup
+  there is unsupported. Work-tab timeouts clean up only the temporary tab.
+
+Diagnostics add an ordinary + partitioned cookie canary test on a reserved `.invalid`
+domain. These public dummy cookies expire in two minutes if cleanup fails. The development
+server is loopback-only and rejects hidden files, traversal, unexpected hosts, and writes.
+
+The README, privacy policy, architecture, store notes, and test guide now describe the
+actual scope. New security notes distinguish local evidence from remote token invalidation
+and list the checks still required before public distribution.
+
+- 233 Node tests passed (up from 196); browser APIs in this suite are fakes.
+- 22 page-runner assertions passed in real Chrome on Windows; popup failure/interruption
+  evidence and recovery navigation were checked using local fixtures.
+- Installed-extension cookie deletion and provider-side invalidation were **not** tested
+  in this pass. No real accounts were logged out. An independent audit and the manual
+  release checks remain outstanding.
+
 ## 0.35.0 — 4 September 2026
 
 ### A recovery plan you can take to a trusted device

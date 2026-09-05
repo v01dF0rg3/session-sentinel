@@ -10,13 +10,14 @@
  * Origin/Referer, and SameSite=Strict cookies - none of which a replayed fetch from
  * the extension origin can produce.
  *
- * `capability` controls the strongest result a separately tested recipe may support:
- *   'global' - has been tested for revoke-everywhere behavior
- *   'local'  - reaches sign-out for this browser; each run is still reported as an attempt
+ * `capability` describes a recipe's intended scope, not evidence for a current run:
+ *   'global' - intended to use a provider's sign-out-everywhere flow
+ *   'local'  - intended to reach sign-out for this browser
+ * Both can report only an attempt, never verified token revocation.
  *
  * VERIFICATION STATUS: every URL below has been checked to resolve. GitHub and Google have
  * local observations recorded, but NO recipe has verified global capability. None can
- * currently report 'revoked'.
+ * report 'revoked', regardless of historical observations or downloaded metadata.
  *
  * This is not caution for its own sake. The GitHub recipe below claimed it had revoked
  * every session; the account's other devices were still signed in minutes later. Three
@@ -28,10 +29,11 @@
  *   2. Both of its click steps were `optional`, so the recipe could finish having clicked
  *      nothing. A 'global' recipe now must contain a click that is allowed to fail the
  *      recipe, and the runner reports 'none' if no click actually landed.
- *   3. Nothing tied the capability claim to evidence. It does now: `verified`.
+ *   3. Historical metadata was treated as current proof. It no longer authorizes a
+ *      revocation result; `verified` is only a dated observation retained for reference.
  *
- * To verify a recipe: sign in on a second device, run the logout, and check that the
- * second device is actually signed out. Only then add a `verified` date.
+ * Record provider tests separately with exact steps and limitations. A second device's
+ * independent session is not a replay of a copied token from the first session.
  */
 
 import { isTrustedLogoutDestination } from './trust.js';
@@ -56,9 +58,8 @@ import { registrableDomain } from './domain.js';
  * @property {RecipeCapability} capability
  * @property {Step[]} steps
  * @property {boolean} [mayRequireReauth] Site often demands a password to finish.
- * @property {string} [verified] ISO date the capability was CONFIRMED against a real
- *   account, by signing in on a second device and checking the session actually died.
- *   Without it a 'global' recipe is reported only as an attempt at run time.
+ * @property {string} [verified] Historical observation date; never authorizes a stronger
+ *   runtime result. Provider-side token invalidation is not independently observed.
  * @property {string} [note]
  */
 
@@ -147,7 +148,7 @@ export function findRecipe(domain) {
  * @returns {Recipe}
  */
 export function heuristicRecipe(origin, mode = 'home', logoutUrl) {
-  const CONFIRM = 'sign out|log out|logout|log off|sign me out|yes|confirm';
+  const CONFIRM = 'sign out|log out|logout|log off|sign me out';
 
   if (mode === 'path') {
     return {
@@ -198,13 +199,23 @@ export function isValidRecipe(value) {
   if (typeof recipe.domain !== 'string' || !recipe.domain) return false;
   if (recipe.capability !== 'global' && recipe.capability !== 'local') return false;
   if (!Array.isArray(recipe.steps) || recipe.steps.length === 0 || recipe.steps.length > 24) return false;
+  let target = recipe.domain;
+  if (target.startsWith('https://')) {
+    try {
+      const parsed = new URL(target);
+      if (parsed.origin !== target || parsed.username || parsed.password || parsed.port) return false;
+      target = parsed.hostname;
+    } catch { return false; }
+  }
+  if (!target || registrableDomain(target) !== target) return false;
+  if (recipe.steps[0]?.op !== 'navigate') return false;
 
   // A recipe claiming to end sessions everywhere must contain a click that is allowed to
   // fail it. Without that it can complete having done nothing at all, which is how a
   // recipe came to report success while every other session stayed live.
   if (recipe.capability === 'global') {
     const decisive = recipe.steps.some(
-      (step) => (step.op === 'click' || step.op === 'clickText') && !step.optional
+      (step) => step && (step.op === 'click' || step.op === 'clickText') && !step.optional
     );
     if (!decisive) return false;
   }
@@ -212,14 +223,14 @@ export function isValidRecipe(value) {
   const ops = new Set(['navigate', 'waitFor', 'click', 'clickText', 'assertAbsent', 'assertPresent', 'sleep']);
   return recipe.steps.every((step) => {
     if (!step || typeof step !== 'object' || !ops.has(step.op)) return false;
+    if (step.optional !== undefined && typeof step.optional !== 'boolean') return false;
+    if (step.timeoutMs !== undefined && (!Number.isFinite(step.timeoutMs) || step.timeoutMs <= 0 || step.timeoutMs > 30000)) return false;
     if (step.op === 'navigate') {
       if (typeof step.url !== 'string') return false;
-      const target = recipe.domain.startsWith('https://')
-        ? new URL(recipe.domain).hostname
-        : recipe.domain;
-      return isTrustedLogoutDestination(step.url, registrableDomain(target));
+      return isTrustedLogoutDestination(step.url, target);
     }
-    if (step.op === 'sleep') return typeof step.ms === 'number' && step.ms >= 0 && step.ms <= 10000;
-    return typeof step.selector === 'string' && step.selector.length > 0;
+    if (step.op === 'sleep') return Number.isFinite(step.ms) && step.ms >= 0 && step.ms <= 10000;
+    if (step.op === 'clickText' && (typeof step.text !== 'string' || !step.text.trim() || step.text.length > 500)) return false;
+    return typeof step.selector === 'string' && step.selector.length > 0 && step.selector.length <= 2000;
   });
 }

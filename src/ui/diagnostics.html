@@ -9,8 +9,9 @@
     <h1 style="font-size:20px;margin-bottom:6px">Diagnostics</h1>
     <p class="muted" style="margin-bottom:16px">
       Exercises the browser APIs Session Sentinel depends on and reports what actually works
-      here. Safe to run: it reads your cookie list but does not delete any of it, and the
-      only data it clears belongs to a reserved test domain that cannot exist.
+      here. It does not delete real website data. It reads cookie metadata, creates two
+      public dummy cookies on a reserved .invalid test domain, then removes them and checks
+      the result. Any leftover test cookies expire within two minutes.
     </p>
 
     <div class="note">
@@ -38,8 +39,8 @@
     <section class="card" style="margin-top:22px">
       <h2 style="margin-bottom:6px">Private-store account check</h2>
       <p class="muted" style="margin-bottom:10px">
-        Tests the one remaining browser-native way to distinguish an account cookie from
-        an anonymous session: load one site in a genuinely empty Incognito cookie store
+        Tests whether a site gives anonymous visitors the same cookie names: load one
+        site in a genuinely empty Incognito cookie store
         and compare names with the normal profile. It never reads or reports cookie
         values. The site receives one ordinary private visit. The result is diagnostic
         only: sites may reuse the same cookie name before and after sign-in, so no account
@@ -63,8 +64,8 @@
       <p class="muted" style="margin-bottom:10px">
         How often the extension reaches a site's sign-out route or control instead of only
         deleting local data. Reaching it is useful, but does not prove the server rejected
-        a copied token. Separately verified revoke-everywhere results are counted on their
-        own. This evidence identifies the sites most worth improving.
+        a copied token. This evidence identifies the sites most worth improving; it is
+        not a count of accounts proven safe.
       </p>
       <p id="coverage-headline" style="font-weight:650;margin-bottom:8px"></p>
       <div id="coverage-methods" class="muted" style="margin-bottom:12px"></div>

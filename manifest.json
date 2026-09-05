@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "Session Sentinel",
-  "version": "0.35.0",
+  "version": "0.36.0",
   "description": "Attempts site sign-out and clears local session data on demand, on idle, on lock, or around browser close.",
-  "minimum_chrome_version": "116",
+  "minimum_chrome_version": "119",
   "permissions": [
     "storage",
     "alarms",

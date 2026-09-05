@@ -1,9 +1,9 @@
 /**
  * Popup. Renders the overview, dispatches actions, and reports outcomes honestly -
- * green only for separately verified revoke-everywhere behavior.
+ * local observations never imply remote token revocation.
  */
 
-import { outcomeColor, summarize } from '../engine/report.js';
+import { localEvidenceText, outcomeColor, summarize } from '../engine/report.js';
 import { compromiseAdviceFor } from '../core/session-pages.js';
 import { atLeast } from '../core/risk.js';
 import { groupByTier } from '../core/relevance.js';
@@ -13,6 +13,9 @@ let overview = null;
 
 const el = {
   status: /** @type {HTMLElement} */ (document.getElementById('status')),
+  runEvidence: document.getElementById('run-evidence'),
+  runEvidenceTitle: document.getElementById('run-evidence-title'),
+  runEvidenceSites: document.getElementById('run-evidence-sites'),
   siteList: /** @type {HTMLUListElement} */ (document.getElementById('site-list')),
   listActions: /** @type {HTMLElement} */ (document.getElementById('list-actions')),
   siteCount: /** @type {HTMLElement} */ (document.getElementById('site-count')),
@@ -49,7 +52,7 @@ let showQuestions = false;
  * @returns {Promise<any>}
  */
 function send(message) {
-  return chrome.runtime.sendMessage(message);
+  return chrome.runtime.sendMessage({ ...message, incognitoContext: chrome.extension?.inIncognitoContext === true });
 }
 
 /**
@@ -69,11 +72,16 @@ async function load() {
 
 function render() {
   if (!overview) return;
+  if (overview.error) { setStatus(overview.error, 'red'); setBusy(true); return; }
   const { settings, sites, currentDomain, lastReport, crashTrail } = overview;
 
-  renderCrashReport(crashTrail);
+  renderCrashReport(overview.runInProgress ? null : crashTrail);
+  renderRunEvidence(lastReport);
 
   el.enabledLabel.textContent = settings.enabled ? 'Active' : 'Paused';
+  if (chrome.extension?.inIncognitoContext) {
+    setStatus('This list concerns the normal Chrome profile. Use a normal window for account cleanup; Incognito sessions are not covered.', 'amber');
+  }
 
   const confirmedDomains = new Set(overview.relevance?.confirmed ?? []);
   const confirmedSites = sites.filter((/** @type {any} */ s) => confirmedDomains.has(s.domain));
@@ -85,7 +93,7 @@ function render() {
   // those had set a cookie while the user read a page. The shown count leads because it is
   // the honest one; the total stays visible so anonymous-cookie candidates are not hidden.
   const shown = overview.relevance?.confirmed?.length ?? overview.relevance?.used?.length ?? sites.length;
-  el.logoutAll.disabled = !settings.enabled || runnable.length === 0;
+  el.logoutAll.disabled = !settings.enabled || runnable.length === 0 || overview.runInProgress;
   el.siteCount.textContent =
     shown === sites.length ? `${sites.length} confirmed` : `${shown} confirmed`;
   el.siteCount.title =
@@ -122,7 +130,7 @@ function render() {
 
   if (lastReport?.sites?.length) {
     const when = new Date(lastReport.finishedAt);
-    el.lastRun.textContent = `Last run ${when.toLocaleTimeString()} - ${summarize(lastReport)}`;
+    el.lastRun.textContent = `${lastReport.status === 'running' ? 'Latest checkpoint' : 'Last run'} ${when.toLocaleTimeString()} - ${summarize(lastReport)}`;
   } else {
     el.lastRun.textContent = 'No runs yet.';
   }
@@ -398,6 +406,36 @@ function buildCandidateControl(domain) {
   return wrap;
 }
 
+function renderRunEvidence(report) {
+  el.runEvidence.hidden = !report || (!report.sites?.length && !report.pending?.length);
+  if (el.runEvidence.hidden) return;
+  el.runEvidenceTitle.textContent = report.status === 'running'
+    ? `${overview.runInProgress ? 'Cleanup in progress' : 'Cleanup interrupted'}: ${report.pending?.length ?? 0} site(s) unfinished`
+    : `Last cleanup: ${summarize(report)}`;
+  el.runEvidenceSites.replaceChildren();
+  if (report.status === 'running' && !overview.runInProgress) el.runEvidence.open = true;
+  for (const site of report.sites ?? []) {
+    const item = document.createElement('div');
+    item.className = 'run-evidence-item';
+    const title = document.createElement('strong');
+    title.textContent = site.domain;
+    const action = document.createElement('p');
+    const attempted = site.serverAction === 'attempted' || ['logoutAttempted', 'loggedOut', 'revoked'].includes(site.outcome);
+    action.textContent = attempted ? 'Website: sign-out attempted; remote revocation not verified.' : 'Website: no sign-out action was observed.';
+    const local = document.createElement('p');
+    local.textContent = localEvidenceText(site.localCleanup);
+    if (site.outcome === 'failed') local.className = 'evidence-warning';
+    item.append(title, action, local);
+    el.runEvidenceSites.append(item);
+  }
+  for (const domain of report.pending ?? []) {
+    const pending = document.createElement('p');
+    pending.className = 'evidence-warning';
+    pending.textContent = `${domain}: unfinished; no completed result was recorded.`;
+    el.runEvidenceSites.append(pending);
+  }
+}
+
 /**
  * Show what the extension was doing when the browser died last time.
  *
@@ -471,6 +509,8 @@ async function act(busyText, message) {
       const worst = worstColor(report);
       setStatus(describe(report), worst);
       renderRevokeGuidance(report);
+      renderRunEvidence(report);
+      el.runEvidence.open = true;
     }
   } catch (error) {
     setStatus(error instanceof Error ? error.message : String(error), 'red');

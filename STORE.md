@@ -15,14 +15,14 @@ The store asks for these one at a time. Each answer states the concrete feature.
 
 | Permission | Justification |
 |---|---|
-| `cookies` | Reads cookie names and domains as one source of login evidence and deletes site cookies during local cleanup. Cookie presence alone is not treated as proof of an account. |
-| `browsingData` | Deletes cookies and site storage (localStorage, IndexedDB, service workers, cache storage) for a specific site during local cleanup. |
+| `cookies` | Reads cookie metadata as one source of login evidence; deletes individual cookies in the normal profile, including partitioned cookies, and reads back the result. Cookie presence alone is not proof of an account. Diagnostics create and remove two public dummy cookies on a reserved test domain. |
+| `browsingData` | Requests localStorage, IndexedDB, service worker, cache storage, and file-system cleanup for concrete site origins. Not used to delete cookies. Successful API completion is not independent storage-content verification. |
 | `tabs` | Identifies the current site, finds and optionally reloads matching user tabs after local cleanup, hosts temporary sign-out work tabs in an existing window, and supports a manual diagnostic in an already-open Incognito window. The extension never closes a user tab or creates or removes a browser window. |
 | `scripting` | Reads limited page UI needed to identify account/sign-in/sign-out controls and operates a site's own sign-out control inside a work tab. It never reads form values or passwords and does not transmit the page evidence. |
-| `storage` | Saves the user's settings and the report of the last run, locally. |
+| `storage` | Saves settings, local account decisions, run checkpoints, cleanup evidence, and unfinished startup retry domains locally. |
 | `alarms` | Schedules periodic wakeups during a long multi-site run and the optional weekly recipe check. It does not guarantee that Chrome keeps the worker alive. |
 | `idle` | Detects inactivity and screen lock, which are two automatic cleanup triggers the user can enable. |
-| `notifications` | Shows the result of automatic cleanup, separating verified revoke-recipe completion, sign-out attempts, local-only clearing, and failures. |
+| `notifications` | Shows automatic cleanup results, separating sign-out attempts, local-only clearing, and results that need attention. No result claims verified remote revocation. |
 | `host_permissions: <all_urls>` | The extension cannot know in advance which sites may contain login evidence or need user-requested cleanup. Access is used to inspect account controls, delete local session data, operate sites' own sign-out controls, and load one user-entered domain during the explicit private-store diagnostic. Data is not transmitted. |
 
 ### Optional permissions
@@ -63,8 +63,8 @@ interpreted by code inside the extension; nothing is `eval`'d or fetched as scri
 > **It tells you the truth about what it achieved.**
 >
 > "Log out" means different things on different sites. Session Sentinel separates a reached
-> sign-out route or control from verified revoke-everywhere behavior and from local-only
-> cleanup. A token copied earlier may still work, so its recovery checklist directs you to
+> sign-out route or control from cookie readback and Chrome's acceptance of local storage
+> cleanup. It does not verify remote revocation. A token copied earlier may still work, so its recovery checklist directs you to
 > provider-owned session lists and security settings from a trusted device.
 >
 > **It will not surprise you.**
@@ -94,11 +94,9 @@ Productivity › Workflow & Planning, or Privacy & Security if available.
 ## Before submitting
 
 - [ ] Complete the manual smoke test in [TESTING.md](TESTING.md) on a clean profile
-- [ ] Before marking any recipe `global`, verify it with a throwaway account on a second
-      device and record its `verified` date. Until then the engine reports only a sign-out
-      attempt and never reports `revoked`. Verification means: sign in on a second device,
-      run the recipe, and confirm the second session can no longer be used.
-      This was not hypothetical — the GitHub recipe claimed a revocation that demonstrably
-      had not happened.
+- [ ] Complete and record the release gates in [SECURITY.md](SECURITY.md), including real
+      browser cookie canaries and provider-specific throwaway-account checks
+- [ ] Keep every recipe result at an attempt. A historical date or an independent second
+      device's session is not proof about a copied token or this run
 - [ ] Capture the four screenshots
 - [ ] Confirm the privacy policy is reachable at a public URL

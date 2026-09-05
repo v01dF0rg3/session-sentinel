@@ -22,6 +22,7 @@
  *   `loggedOut` is accepted only for records written by older versions.
  * @property {LogoutMethod} method Which tier did the work, or 'none'.
  * @property {boolean} attempted A website sign-out route or control was tried at all.
+ * @property {'attempted' | 'notAttempted'} [serverAction] Observed action, separate from local cleanup.
  * @property {number} at
  * @property {number} runs
  */
@@ -40,7 +41,7 @@ export const METHOD_LABELS = {
  * @property {number} total Sites with a recorded result.
  * @property {number} attempted Sites where website sign-out was tried.
  * @property {number} logoutReached Sites where a logout route or control was reached.
- * @property {number} verifiedRevoked Sites with separately verified revoke-everywhere.
+ * @property {number} verifiedRevoked Legacy schema field, always zero; old claims are not evidence.
  * @property {number} clearedOnly Sites where only local clearance was confirmed.
  * @property {number} failed
  * @property {number | null} reachRate Percentage of attempts that reached sign-out UI.
@@ -57,7 +58,7 @@ export function summariseCoverage(entries) {
   const byMethod = {};
   let attempted = 0;
   let logoutReached = 0;
-  let verifiedRevoked = 0;
+  const verifiedRevoked = 0;
   let clearedOnly = 0;
   let failed = 0;
   /** @type {CoverageEntry[]} */
@@ -66,7 +67,8 @@ export function summariseCoverage(entries) {
   for (const entry of entries) {
     if (entry.outcome === 'failed') {
       failed += 1;
-      continue;
+      // Old records did not preserve whether sign-out preceded a local failure.
+      if (!entry.serverAction) continue;
     }
 
     // Only attempts count towards the reach rate. A site below the tier threshold was never
@@ -78,14 +80,14 @@ export function summariseCoverage(entries) {
     byMethod[entry.method] = (byMethod[entry.method] ?? 0) + 1;
 
     if (
+      entry.serverAction === 'attempted' ||
       entry.outcome === 'revoked' ||
       entry.outcome === 'logoutAttempted' ||
       entry.outcome === 'loggedOut'
     ) {
       logoutReached += 1;
-      if (entry.outcome === 'revoked') verifiedRevoked += 1;
     } else {
-      clearedOnly += 1;
+      if (entry.outcome !== 'failed') clearedOnly += 1;
       needsRecipe.push(entry);
     }
   }
@@ -116,8 +118,5 @@ export function describeCoverage(summary) {
       ? null
       : 'No site has had website sign-out attempted yet, so there is nothing to measure.';
   }
-  const verified = summary.verifiedRevoked
-    ? ` ${summary.verifiedRevoked} had separately verified revoke-everywhere behavior.`
-    : ' None had separately verified revoke-everywhere behavior.';
-  return `${summary.logoutReached} of ${summary.attempted} attempts reached a site sign-out route or control (${summary.reachRate}%). This does not prove a copied token was invalidated.${verified}`;
+  return `${summary.logoutReached} of ${summary.attempted} attempts reached a site sign-out route or control (${summary.reachRate}%). This does not prove a copied token was invalidated. Remote revocation was not verified.`;
 }

@@ -18,10 +18,10 @@
 import { buildPlan } from '../core/plan.js';
 import { expandForIdentity, keptSiblings } from '../core/identity.js';
 import { revokeGuidanceFor } from '../core/session-pages.js';
-import { discoverSessions, likelyLoggedIn, verifyCleared, wipeSite } from '../platform/sessions.js';
+import { cookieClearance, discoverSessions, likelyLoggedIn, snapshotCleanupScope, wipeSite } from '../platform/sessions.js';
 import { findTabsForDomain, findUsableWindow, reloadTabs } from '../platform/tabs.js';
 import { attemptServerLogout } from './logout.js';
-import { summarize } from './report.js';
+import { cleanupEvidence, localEvidenceText, summarize } from './report.js';
 import { getSettings, updateState } from '../platform/settings.js';
 import { clearTrail, mark as breadcrumb } from '../platform/breadcrumb.js';
 import { logEvent } from '../platform/eventlog.js';
@@ -43,6 +43,7 @@ async function mark(step, description, domain = '') {
 
 const RUN_LOCK = 'runInProgress';
 const KEEPALIVE_ALARM = 'sentinel-keepalive';
+let activeRun = false;
 
 /**
  * Is a run currently underway?
@@ -53,8 +54,31 @@ const KEEPALIVE_ALARM = 'sentinel-keepalive';
  * @returns {Promise<boolean>}
  */
 export async function isRunInProgress() {
-  const lock = await chrome.storage.session.get(RUN_LOCK);
-  return Boolean(lock[RUN_LOCK]) && Date.now() - lock[RUN_LOCK] < 5 * 60 * 1000;
+  // Only this service worker runs the orchestrator. A synchronous gate closes the race
+  // between two storage.get/set calls, and never expires underneath a slow live run.
+  // A session-storage marker from a previous worker is an interruption, not a live lock.
+  return activeRun;
+}
+
+async function withRunGuard(trigger, work) {
+  const startedAt = Date.now();
+  if (activeRun) return { trigger, startedAt, finishedAt: Date.now(), sites: [],
+    skipped: [{ domain: '*', why: 'a run is already in progress' }] };
+  activeRun = true; // Before any await, for manual AND local-only/automatic paths.
+  try {
+    await chrome.storage.session.set({ [RUN_LOCK]: startedAt });
+    try { await chrome.alarms.create(KEEPALIVE_ALARM, { periodInMinutes: 0.5 }); } catch { /* Not a lock or lifetime guarantee. */ }
+    return await work();
+  } finally {
+    try { await chrome.alarms.clear(KEEPALIVE_ALARM); } catch { /* Release even if alarms fail. */ }
+    try { await chrome.storage.session.remove(RUN_LOCK); } catch { /* Memory gate is authoritative. */ }
+    activeRun = false;
+  }
+}
+
+async function saveProgress(trigger, startedAt, sites, skipped, pending) {
+  await updateState({ lastReport: { trigger, startedAt, finishedAt: Date.now(),
+    status: 'running', sites: [...sites], skipped, pending: [...pending] } });
 }
 
 /** @typedef {import('./report.js').RunReport} RunReport */
@@ -67,21 +91,14 @@ export async function isRunInProgress() {
  * @returns {Promise<RunReport>}
  */
 export async function runLogout(trigger, domains = null) {
+  return withRunGuard(trigger, () => performLogout(trigger, domains));
+}
+
+async function performLogout(trigger, domains) {
   const startedAt = Date.now();
   await logEvent('run:start', trigger);
 
-  // A second run stacking on the first would fight over tabs and produce nonsense
-  // results, so concurrent runs are refused rather than queued.
-  if (await isRunInProgress()) {
-    return { trigger, startedAt, finishedAt: Date.now(), sites: [], skipped: [{ domain: '*', why: 'a run is already in progress' }] };
-  }
-  await chrome.storage.session.set({ [RUN_LOCK]: Date.now() });
-
-  // A slow page load can leave a gap in chrome.* activity. The periodic alarm gives Chrome
-  // another opportunity to wake the worker; it is not treated as a completion guarantee.
-  await chrome.alarms.create(KEEPALIVE_ALARM, { periodInMinutes: 0.4 });
-
-  try {
+  {
     const settings = await getSettings();
     const known = likelyLoggedIn(await discoverSessions()).map((s) => s.domain);
     const requested = domains ?? known;
@@ -102,6 +119,7 @@ export async function runLogout(trigger, domains = null) {
 
     /** @type {SiteResult[]} */
     const sites = [];
+    await saveProgress(trigger, startedAt, sites, plan.skipped, plan.targets.map((t) => t.domain));
     const needsWindow = plan.targets.some((t) => t.serverLogout);
 
     // Website sign-out borrows a window the user already has open. The extension never
@@ -130,11 +148,17 @@ export async function runLogout(trigger, domains = null) {
       };
 
       // 1. Server-side, while the session still exists.
+      const beforeLogout = await snapshotCleanupScope(target.domain);
       /** @type {import('./logout.js').LogoutAttempt} */
       let attempt = { result: 'none', detail: 'not attempted' };
       if (target.serverLogout && windowId !== null) {
         await mark('serverLogout', 'opening the site own sign-out page in a background tab', target.domain);
-        attempt = await attemptServerLogout(target.domain, windowId, settings.serverLogout.timeoutMs);
+        try {
+          attempt = await attemptServerLogout(target.domain, windowId, settings.serverLogout.timeoutMs);
+        } catch {
+          // A recipe-storage failure must not prevent the requested local cleanup.
+          attempt = { result: 'none', detail: 'website sign-out was unavailable; local cleanup was still attempted' };
+        }
       } else if (target.serverLogout && windowError) {
         attempt = { result: 'none', detail: `could not open a temporary work tab (${windowError})` };
       }
@@ -146,7 +170,7 @@ export async function runLogout(trigger, domains = null) {
       const affected = await findTabsForDomain(target.domain);
       // 3. Destroy what is left locally. This always runs, whatever happened above.
       await mark('wipe', `clearing ${target.dataTypes.join(', ')} for this site`, target.domain);
-      const wipe = await wipeSite(target.domain, target.dataTypes);
+      const wipe = await wipeSite(target.domain, target.dataTypes, beforeLogout);
 
       // 4. Optionally reload those tabs so they reflect the local cleanup.
       if (affected.length && settings.tabHandling === 'reload') {
@@ -156,14 +180,15 @@ export async function runLogout(trigger, domains = null) {
 
       // 5. Verify, then report the weakest claim the evidence supports.
       await mark('verify', 'reading the cookie jar back to confirm the wipe', target.domain);
-      result.verified = await verifyCleared(target.domain);
+      const check = await cookieClearance(target.domain);
+      result.verified = check.status === 'cleared';
+      result.localCleanup = cleanupEvidence(wipe, check);
+      result.serverAction = attempt.result === 'none' ? 'notAttempted' : 'attempted';
 
       // Clearing cookies locally does not ask the site to invalidate a server token.
       // Say where the user can review sessions and security settings rather than implying
       // that local verification proves anything about the server.
-      if (attempt.result !== 'revoked') {
-        result.revokeGuidance = revokeGuidanceFor(target.domain, attempt.result === 'attempted');
-      }
+      result.revokeGuidance = revokeGuidanceFor(target.domain, result.serverAction === 'attempted');
 
       // A partial wipe is not a clean one. Say which types survived rather than
       // letting "cleared" imply everything went.
@@ -189,12 +214,9 @@ export async function runLogout(trigger, domains = null) {
           ? ` — ${affected.length} tab${affected.length === 1 ? '' : 's'} still open on this site; reload to see the change`
           : '';
 
-      if (!wipe.ok) {
+      if (result.localCleanup.status === 'incomplete') {
         result.outcome = 'failed';
-        result.detail = wipe.error ?? 'could not clear local data';
-      } else if (attempt.result === 'revoked') {
-        result.outcome = 'revoked';
-        result.detail = attempt.detail + sharedNote + partial + keptNote + openTabsNote;
+        result.detail = `${result.serverAction === 'attempted' ? 'Site sign-out was attempted. ' : ''}${localEvidenceText(result.localCleanup)}`;
       } else if (attempt.result === 'attempted') {
         result.outcome = 'logoutAttempted';
         result.detail = attempt.detail + sharedNote + partial + keptNote + openTabsNote;
@@ -208,13 +230,14 @@ export async function runLogout(trigger, domains = null) {
       // Count what was reached. Four recipes cover four domains; whether the generic
       // fallback reaches the rest has never been measured, and without a number the choice
       // of which site to write a recipe for is guesswork.
-      await recordOutcome(target.domain, result.outcome, attempt.method ?? 'none', target.serverLogout);
+      await recordOutcome(target.domain, result.outcome, attempt.method ?? 'none', target.serverLogout, result.serverAction);
 
       sites.push(result);
+      await saveProgress(trigger, startedAt, sites, plan.skipped, plan.targets.slice(sites.length).map((t) => t.domain));
     }
 
     /** @type {RunReport} */
-    const report = { trigger, startedAt, finishedAt: Date.now(), sites, skipped: plan.skipped };
+    const report = { trigger, startedAt, finishedAt: Date.now(), status: 'complete', sites, skipped: plan.skipped, pending: [] };
     await updateState({ lastRunAt: report.finishedAt, lastReport: report });
 
     await mark('notify', 'showing the result notification');
@@ -226,14 +249,12 @@ export async function runLogout(trigger, domains = null) {
     await clearTrail();
     await logEvent('run:complete', `${sites.length} site(s)`);
     return report;
-  } finally {
-    await chrome.alarms.clear(KEEPALIVE_ALARM);
-    await chrome.storage.session.remove(RUN_LOCK);
   }
 }
 
 /**
- * Local-only wipe with no tabs and no network. This is what runs at browser close and
+ * Local-only wipe with no tab mutations and no network. Read-only tab queries supply
+ * origin hints. This is what runs at browser close and
  * on the next startup, where opening windows is either impossible or unwelcome.
  *
  * @param {Trigger} trigger
@@ -241,6 +262,10 @@ export async function runLogout(trigger, domains = null) {
  * @returns {Promise<RunReport>}
  */
 export async function runLocalWipe(trigger, domains = null) {
+  return withRunGuard(trigger, () => performLocalWipe(trigger, domains));
+}
+
+async function performLocalWipe(trigger, domains) {
   const startedAt = Date.now();
   const settings = await getSettings();
   const candidates = domains ?? likelyLoggedIn(await discoverSessions()).map((s) => s.domain);
@@ -248,22 +273,29 @@ export async function runLocalWipe(trigger, domains = null) {
 
   /** @type {SiteResult[]} */
   const sites = [];
+  await saveProgress(trigger, startedAt, sites, plan.skipped, plan.targets.map((t) => t.domain));
   for (const target of plan.targets) {
     await mark('localWipe', `clearing ${target.dataTypes.join(', ')} for this site`, target.domain);
     const wipe = await wipeSite(target.domain, target.dataTypes);
+    const check = await cookieClearance(target.domain);
+    const localCleanup = cleanupEvidence(wipe, check);
     const partial = wipe.failed.length ? ` (${wipe.failed.join(', ')} could not be cleared)` : '';
     sites.push({
       domain: target.domain,
       tier: target.tier,
-      outcome: wipe.ok ? 'cleared' : 'failed',
-      detail: wipe.ok ? `local data cleared (${target.depth})${partial}` : wipe.error ?? 'failed',
+      outcome: localCleanup.status === 'complete' ? 'cleared' : 'failed',
+      detail: localCleanup.status === 'complete' ? `local cleanup completed for known origins (${target.depth})${partial}` : localEvidenceText(localCleanup),
       tabsRefreshed: 0,
-      verified: wipe.ok ? await verifyCleared(target.domain) : false
+      verified: check.status === 'cleared',
+      localCleanup,
+      serverAction: 'notAttempted',
+      revokeGuidance: revokeGuidanceFor(target.domain, false)
     });
+    await saveProgress(trigger, startedAt, sites, plan.skipped, plan.targets.slice(sites.length).map((t) => t.domain));
   }
 
   /** @type {RunReport} */
-  const report = { trigger, startedAt, finishedAt: Date.now(), sites, skipped: plan.skipped };
+  const report = { trigger, startedAt, finishedAt: Date.now(), status: 'complete', sites, skipped: plan.skipped, pending: [] };
   await updateState({ lastRunAt: report.finishedAt, lastReport: report });
   await clearTrail();
   return report;

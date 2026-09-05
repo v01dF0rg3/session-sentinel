@@ -16,6 +16,8 @@
 import { ensureInitialized, getSettings, getState, migrateSettings, setSiteOverride, updateSettings, updateState } from '../platform/settings.js';
 import { discoverSessions, explainSignedIn, likelyLoggedIn } from '../platform/sessions.js';
 import { isRunInProgress, runLocalWipe, runLogout } from '../engine/run.js';
+import { retryDomains } from '../engine/report.js';
+import { isTrustedUiSender, isUnsupportedPrivateAction } from '../core/command-policy.js';
 import { resolveTier } from '../core/plan.js';
 import { domainToOrigin, registrableDomain, hostnameFromUrl } from '../core/domain.js';
 import { getActiveRecipes, getStoredBundle, refreshBundle, resetToBuiltin } from '../platform/recipe-store.js';
@@ -72,15 +74,17 @@ chrome.runtime.onStartup.addListener(async () => {
   const settings = await getSettings();
 
   // An unclean marker means the previous browser session ended without us finishing.
+  let pending = state.pendingWipeDomains;
   if (!state.shutdownClean && settings.onBrowserClose.enabled) {
     const report = await runLocalWipe(
       'browserClose',
       state.pendingWipeDomains.length ? state.pendingWipeDomains : null
     );
+    pending = retryDomains(report, state.pendingWipeDomains);
     await refreshRestoredTabs(report);
   }
 
-  await updateState({ shutdownClean: false, pendingWipeDomains: [] });
+  await updateState({ shutdownClean: false, pendingWipeDomains: pending });
   await applyIdleInterval();
   await scheduleRecipeUpdates();
 });
@@ -103,6 +107,7 @@ async function refreshRestoredTabs(report) {
     const tabs = await chrome.tabs.query({});
     for (const tab of tabs) {
       if (!tab.id || !tab.url) continue;
+      if (Boolean(tab.incognito) !== Boolean(chrome.extension?.inIncognitoContext)) continue;
       const host = hostnameFromUrl(tab.url);
       if (!host) continue;
       if (cleared.has(registrableDomain(host))) {
@@ -121,9 +126,8 @@ chrome.windows.onRemoved.addListener(async (windowId) => {
   const windows = await chrome.windows.getAll({});
   if (windows.length > 0) return;
 
-  // A run closing its own hidden work window can momentarily leave zero windows. That
-  // is not the browser shutting down, and starting a second wipe on top of a live run
-  // would have the two fighting over the same tabs.
+  // A close event can arrive during a live run. Do not start a competing wipe; an
+  // unfinished shutdown remains eligible for the existing startup retry path.
   if (await isRunInProgress()) return;
 
   const settings = await getSettings();
@@ -132,10 +136,13 @@ chrome.windows.onRemoved.addListener(async (windowId) => {
     return;
   }
 
-  const domains = likelyLoggedIn(await discoverSessions()).map((s) => s.domain);
+  const prior = await getState();
+  const domains = [...new Set([...prior.pendingWipeDomains, ...likelyLoggedIn(await discoverSessions()).map((s) => s.domain)])];
   await updateState({ pendingWipeDomains: domains });
-  await runLocalWipe('browserClose', domains);
-  await updateState({ shutdownClean: true, pendingWipeDomains: [] });
+  const report = await runLocalWipe('browserClose', domains);
+  const pending = retryDomains(report, domains);
+  const busy = report.skipped.some((site) => site.why === 'a run is already in progress');
+  await updateState({ shutdownClean: !busy && pending.length === 0, pendingWipeDomains: busy ? domains : pending });
 });
 
 // Unreliable in MV3, but when it does fire it is the clearest signal that the browser is
@@ -201,7 +208,17 @@ async function checkForRecipeUpdates() {
   return result;
 }
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Only packaged UI pages dispatch privileged commands. Injected page code must never
+  // acquire the same authority simply because its sender.id matches this extension.
+  if (!isTrustedUiSender(sender, chrome.runtime.id)) {
+    sendResponse({ error: 'Commands are only accepted from Session Sentinel pages.' });
+    return false;
+  }
+  if (isUnsupportedPrivateAction(message, sender)) {
+    sendResponse({ error: 'Account cleanup and login actions operate on the normal Chrome profile. Open Session Sentinel in a normal window, not Incognito.' });
+    return false;
+  }
   handleMessage(message)
     .then(sendResponse)
     .catch((error) => sendResponse({ error: error instanceof Error ? error.message : String(error) }));
@@ -412,7 +429,7 @@ async function getOverview() {
   });
 
   const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  const host = activeTab?.url ? hostnameFromUrl(activeTab.url) : null;
+  const host = activeTab?.url && !activeTab.incognito ? hostnameFromUrl(activeTab.url) : null;
 
   // A profile carries hundreds of cookied domains and a dozen the user would recognise.
   // Split them so confirmed accounts are what gets seen first. The account button uses
@@ -443,6 +460,7 @@ async function getOverview() {
       questionCount: questions.length
     },
     lastReport: state.lastReport,
+    runInProgress: await isRunInProgress(),
     // A breadcrumb still present means a previous run never reached its end - the browser
     // died mid-flight. It names the exact call that was running.
     crashTrail: await readTrail(),

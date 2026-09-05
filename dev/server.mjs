@@ -1,9 +1,10 @@
 // Minimal static server for the dev harness. Not part of the extension.
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { extname, join, normalize } from 'node:path';
+import { extname, isAbsolute, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const PORT = Number(process.argv[2] || 5599);
 
 const TYPES = {
@@ -48,7 +49,19 @@ async function renderPreview(name) {
 const PREVIEW = /^\/dev\/([a-z-]+)-preview\.html$/;
 
 createServer(async (req, res) => {
-  const path = decodeURIComponent((req.url || '/').split('?')[0]);
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  if (!['GET', 'HEAD'].includes(req.method) || ![`localhost:${PORT}`, `127.0.0.1:${PORT}`].includes(req.headers.host)) {
+    res.writeHead(403); return res.end('forbidden');
+  }
+  let path;
+  try { path = decodeURIComponent((req.url || '/').split('?')[0]); }
+  catch { res.writeHead(400); return res.end('invalid path'); }
+  // Never expose .git, local config, or files outside the preview asset directories.
+  if (/[\\\x00]/.test(path) || path.split('/').some((part) => part.startsWith('.')) ||
+      !/^\/(?:dev\/|src\/|data\/|icons\/|manifest\.json$|package\.json$)/.test(path)) {
+    res.writeHead(404); return res.end('not found');
+  }
 
   const preview = PREVIEW.exec(path);
   if (preview) {
@@ -62,7 +75,9 @@ createServer(async (req, res) => {
     }
   }
 
-  const target = join(ROOT, normalize(path).replace(/^(\.\.[/\\])+/, ''));
+  const target = resolve(ROOT, `.${path}`);
+  const inside = relative(ROOT, target);
+  if (inside.startsWith('..') || isAbsolute(inside)) { res.writeHead(404); return res.end('not found'); }
   try {
     const body = await readFile(target);
     res.writeHead(200, { 'content-type': TYPES[extname(target)] || 'application/octet-stream' });
@@ -71,4 +86,4 @@ createServer(async (req, res) => {
     res.writeHead(404, { 'content-type': 'text/plain' });
     res.end('not found');
   }
-}).listen(PORT, () => console.log(`dev harness on http://localhost:${PORT}`));
+}).listen(PORT, '127.0.0.1', () => console.log(`dev harness on http://localhost:${PORT} (loopback only)`));

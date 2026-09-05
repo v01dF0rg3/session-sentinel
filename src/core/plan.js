@@ -5,7 +5,7 @@
 
 import { atLeast, classify } from './risk.js';
 import { DEPTH_DATA_TYPES } from './policy.js';
-import { domainToOrigin } from './domain.js';
+import { domainToOrigin, isCleanupDomain } from './domain.js';
 
 /** @typedef {import('./risk.js').RiskTier} RiskTier */
 /** @typedef {import('./policy.js').Settings} Settings */
@@ -105,6 +105,10 @@ export function buildPlan(domains, trigger, settings) {
   }
 
   for (const domain of new Set(domains)) {
+    if (!isCleanupDomain(domain)) {
+      skipped.push({ domain: typeof domain === 'string' ? domain : '', why: 'not a valid site boundary' });
+      continue;
+    }
     const { tier, reason, mode } = resolveTier(domain, settings);
 
     // An ignored site is ignored by automatic triggers and by "log out everywhere".

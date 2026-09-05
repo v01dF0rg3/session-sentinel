@@ -30,7 +30,8 @@
     <div id="summary">running...</div>
 
     <script type="module">
-      import { pageStep } from '../src/engine/step-runner.js';
+      import { pageStep as injectedPageStep } from '../src/engine/step-runner.js';
+      const pageStep = (step) => injectedPageStep(step, location.origin);
 
       const stage = document.getElementById('stage');
       const results = document.getElementById('results');
@@ -93,7 +94,7 @@
       setStage('<button id="aria-only" aria-label="Sign out of all devices"><svg width="14" height="14"></svg></button>');
       r = await pageStep({ op: 'clickText', selector: SEL, text: 'sign out of all devices' });
       check('matches on aria-label', window.__clicked === 'aria-only', window.__clicked);
-      check('detail names the control rather than an empty string', /Sign out of all devices/i.test(r.detail), r);
+      check('detail does not retain account labels or page text', r.detail === 'activated a matching control', r);
 
       // --- 5. assertions --------------------------------------------------------------
       setStage('<form id="f" action="/sessions/revoke_all"><button type="submit" id="submit-btn">Revoke</button></form>');
@@ -126,6 +127,36 @@
 
       r = await pageStep({ op: 'sleep', ms: 50 });
       check('sleep works', r.ok === true, r);
+
+      // --- 8. origin and destination barriers ---------------------------------------
+      setStage('<button id="never-click">Sign out</button>');
+      r = await injectedPageStep({ op: 'clickText', selector: SEL, text: 'sign out' }, 'https://wrong.example');
+      check('an origin change between worker inspection and injection is refused', !r.ok && window.__clicked === null, r);
+      r = await injectedPageStep({ op: 'clickText', selector: SEL, text: 'sign out' });
+      check('missing origin authorization fails closed', !r.ok && window.__clicked === null, r);
+
+      setStage('<a id="cross-origin" href="https://unrelated.example/confirm">Sign out</a>');
+      document.getElementById('cross-origin').addEventListener('click', (event) => event.preventDefault());
+      r = await pageStep({ op: 'clickText', selector: SEL, text: 'sign out' });
+      check('a sign-out-labelled link to another origin is not activated', !r.ok && window.__clicked === null, r);
+
+      setStage('<form action="https://unrelated.example/delete"><button id="cross-form">Sign out</button></form>');
+      stage.querySelector('form').addEventListener('submit', (event) => event.preventDefault());
+      r = await pageStep({ op: 'clickText', selector: SEL, text: 'sign out' });
+      check('an off-origin form cannot use an automated sign-out click', !r.ok && window.__clicked === null, r);
+
+      setStage('<form action="/logout"><button id="override-form" formaction="https://unrelated.example/delete">Sign out</button></form>');
+      stage.querySelector('form').addEventListener('submit', (event) => event.preventDefault());
+      r = await pageStep({ op: 'clickText', selector: SEL, text: 'sign out' });
+      check('a submit-button destination override is checked too', !r.ok && window.__clicked === null, r);
+
+      setStage('<button id="not-hittable" style="position:fixed;left:50000px">Sign out</button>');
+      r = await pageStep({ op: 'clickText', selector: SEL, text: 'sign out' });
+      check('off-viewport controls fail closed after scrolling', !r.ok && window.__clicked === null, r);
+
+      setStage('<button id="click-through" style="pointer-events:none">Sign out</button>');
+      r = await pageStep({ op: 'clickText', selector: SEL, text: 'sign out' });
+      check('hitting a parent behind a click-through control is not success', !r.ok && window.__clicked === null, r);
 
       const summary = document.getElementById('summary');
       summary.textContent = `${passed} passed, ${failed} failed`;

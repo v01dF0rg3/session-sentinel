@@ -53,10 +53,10 @@ test('sites where nothing worked are the ones named', () => {
   );
 });
 
-test('a revoked result is counted separately from an unverified attempt', () => {
+test('a legacy revoked result is only historical attempt evidence', () => {
   const summary = summariseCoverage([entry('a.com', 'revoked', 'recipe')]);
   assert.equal(summary.logoutReached, 1);
-  assert.equal(summary.verifiedRevoked, 1);
+  assert.equal(summary.verifiedRevoked, 0);
   assert.equal(summary.reachRate, 100);
 });
 
@@ -105,7 +105,15 @@ test('the summary sentence states the real proportion', () => {
   const description = describeCoverage(summary);
   assert.match(description, /2 of 3 attempts reached a site sign-out route or control \(67%\)/);
   assert.match(description, /does not prove a copied token was invalidated/i);
-  assert.match(description, /None had separately verified revoke-everywhere behavior/);
+  assert.match(description, /Remote revocation was not verified/);
+});
+
+test('a local cleanup failure does not erase a separately observed sign-out attempt', () => {
+  const summary = summariseCoverage([{ ...entry('a.com', 'failed', 'recipe'), serverAction: 'attempted' }]);
+  assert.equal(summary.failed, 1);
+  assert.equal(summary.logoutReached, 1);
+  assert.equal(summary.reachRate, 100);
+  assert.equal(summary.clearedOnly, 0);
 });
 
 test('legacy loggedOut records are treated as attempts, not verified revocations', () => {

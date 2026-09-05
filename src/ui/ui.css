@@ -55,16 +55,15 @@ body {
 /* Chrome caps a popup at 600px tall and sizes it to the document. Left to grow, the
    content ran past that and the footer fell off the bottom of the scroll - the two links
    that lead to recovery and settings, invisible.
-   So the popup is a bounded flex column: the site list absorbs whatever space is left and
-   scrolls inside itself, and the footer is pinned where it can always be reached. */
+   So the popup is a bounded flex column: the middle content scrolls, including expanded
+   evidence and account lists, while the recovery/settings footer stays reachable. */
 body.popup {
   width: 380px;
   padding: 12px;
   max-height: 584px;
   display: flex;
   flex-direction: column;
-  /* The site list is the only thing allowed to scroll. If the page itself can scroll, the
-     footer moves off the bottom edge and the links to recovery and settings vanish. */
+  /* Only the middle content scrolls; never push the recovery footer off-screen. */
   overflow: hidden;
 }
 body.popup > .header,
@@ -73,6 +72,8 @@ body.popup > #logout-all,
 body.popup > .hint,
 body.popup > .status,
 body.popup > .footer { flex-shrink: 0; }
+.popup-content { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.popup-content > .sites { overflow: visible; }
 body.options { max-width: 720px; margin: 0 auto; padding: 28px 24px 48px; }
 
 h1 { font-size: 14px; margin: 0; font-weight: 650; }
@@ -118,9 +119,10 @@ button:disabled { opacity: .55; cursor: default; }
   background: var(--bg-sunken); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 9px 10px; margin-bottom: 10px;
 }
-.current-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.current-info { display: flex; align-items: center; gap: 7px; min-width: 0; }
-.current-info strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.current-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.current-info { display: flex; flex: 1 0 100%; align-items: center; gap: 7px; min-width: 0; }
+.current-info .label { flex-shrink: 0; }
+.current-info strong { min-width: 0; overflow-wrap: anywhere; }
 .current-actions { display: flex; gap: 6px; flex-shrink: 0; }
 .label { color: var(--text-muted); font-size: 11px; }
 
@@ -387,12 +389,17 @@ th { color: var(--text-muted); font-weight: 600; font-size: 11px; text-transform
 .verdict .muted { font-size: 11px; }
 
 
-/* Always visible, never inside the scrolling list. These are the only routes to the other
-   two hundred cookied domains, and inside the list they sat below the fold — making a
-   large profile look like a four-site one. */
+/* Account-list disclosures remain separate from the list's rows. */
 .list-actions { flex-shrink: 0; }
 .list-actions .disclosure {
   display: flex; justify-content: center;
   padding: 7px 4px 0; border-top: 1px solid var(--border);
 }
 .list-actions .disclosure .link { font-size: 11.5px; }
+/* Persistent evidence scrolls with the popup's middle content, not a second nested pane. */
+.run-evidence { margin: 10px 0; padding: 10px; border: 1px solid var(--border); border-radius: 8px; }
+.run-evidence summary { cursor: pointer; }
+.run-evidence-sites { overflow-wrap: anywhere; }
+.run-evidence-item { padding: 9px 0; border-top: 1px solid var(--border); }
+.run-evidence-item p { margin: 5px 0; font-size: 12px; }
+.evidence-warning { color: var(--red, #ff6868); }
