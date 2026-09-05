@@ -2,7 +2,7 @@
 
 Session Sentinel is a containment and recovery aid. It is not antivirus, a trusted session
 inventory, or proof that stolen tokens have stopped working. No independent security audit
-or stolen-token invalidation validation is claimed for v0.36.0.
+or stolen-token invalidation validation is claimed for v0.36.x.
 
 ## What this version can establish
 

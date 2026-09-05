@@ -31,7 +31,7 @@
 
     <script type="module">
       import { pageStep as injectedPageStep } from '../src/engine/step-runner.js';
-      const pageStep = (step) => injectedPageStep(step, location.origin);
+      const pageStep = (step) => injectedPageStep(step, location.origin, Date.now() + (step.timeoutMs ?? 8000) + 1000);
 
       const stage = document.getElementById('stage');
       const results = document.getElementById('results');
@@ -157,6 +157,26 @@
       setStage('<button id="click-through" style="pointer-events:none">Sign out</button>');
       r = await pageStep({ op: 'clickText', selector: SEL, text: 'sign out' });
       check('hitting a parent behind a click-through control is not success', !r.ok && window.__clicked === null, r);
+
+      // --- 9. a timed-out injection must not perform a late click -------------------
+      setStage('<button id="expired-click">Sign out</button>');
+      r = await injectedPageStep({ op: 'clickText', selector: SEL, text: 'sign out' }, location.origin, Date.now() - 1);
+      check('an expired injection cannot click after the worker moved on', !r.ok && window.__clicked === null, r);
+      r = await injectedPageStep({ op: 'clickText', selector: SEL, text: 'sign out' }, location.origin);
+      check('missing execution deadline fails closed', !r.ok && window.__clicked === null, r);
+
+      const originalNow = Date.now;
+      const expiresAt = originalNow() + 1000;
+      const expiredControl = document.getElementById('expired-click');
+      const originalScroll = expiredControl.scrollIntoView.bind(expiredControl);
+      expiredControl.scrollIntoView = (...args) => {
+        originalScroll(...args);
+        Date.now = () => expiresAt + 1;
+      };
+      try {
+        r = await injectedPageStep({ op: 'clickText', selector: SEL, text: 'sign out' }, location.origin, expiresAt);
+        check('expiry is checked again immediately before a click', !r.ok && window.__clicked === null, r);
+      } finally { Date.now = originalNow; }
 
       const summary = document.getElementById('summary');
       summary.textContent = `${passed} passed, ${failed} failed`;

@@ -56,6 +56,21 @@ Discovery has a deadline and a 128 KiB streamed-body limit. Discovered endpoints
 navigations must stay on the target's HTTPS registrable site. Recognising an IdP does not
 grant an unrelated site permission to direct clicks into that provider account.
 
+### Do not wait inside a page that is navigating away
+
+Post-click `sleep` steps run in the worker, not in the web page. GitHub exposed the failure:
+the work tab could already display the signed-out page while the original tab remained
+stale, with local cleanup/reload blocked until the work tab was manually closed.
+
+Every page action now uses immediate injection plus a worker-side deadline. A page promise
+that never settles times out into the existing temporary-tab cleanup path. The injected
+function also checks an absolute expiry before acting, including immediately before a
+click: abandoning a promise does not cancel code Chrome may already have queued. The
+worker must still be alive for its timer to run; this is not an OS/worker-lifetime guarantee.
+See Chrome's [scripting API](https://developer.chrome.com/docs/extensions/reference/api/scripting):
+normal injection waits for document idle and returned promises must settle before results
+are delivered. Requested user-tab reloads still happen after local cleanup, not before.
+
 ### Picking the right element to click
 
 The hardest correctness problem in the whole extension, and the source of its first real

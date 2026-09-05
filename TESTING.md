@@ -20,13 +20,15 @@ a security claim the extension did not verify**, which is why it has the most co
 node dev/server.mjs 5599
 ```
 
-Open `http://localhost:5599/dev/step-runner.test.html`. 22 assertions run on load, PASS or
+Open `http://localhost:5599/dev/step-runner.test.html`. 25 assertions run on load, PASS or
 FAIL inline. These cover `pageStep` — the function injected into real pages — against the
 hiding patterns sites actually use. Every one of them exists because a naive
 implementation reports success for a click that never landed.
 
 These include origin-change races, missing origin authorization, cross-origin links/forms,
-submit-button overrides, off-viewport controls, and click-through overlays. The dev server
+submit-button overrides, off-viewport controls, click-through overlays, and expired actions.
+An injection that starts late or expires just before clicking must not activate a control.
+The dev server
 binds only to loopback and refuses hidden files, path traversal, and non-GET/HEAD requests.
 
 **Run these in a visible window with a real viewport.** `pageStep` decides visibility by
@@ -67,6 +69,11 @@ The Node regressions in `cleanup.test.mjs`, `security-boundaries.test.mjs`,
 partitions, tenant boundaries, origin hints preserved across sign-out, permission failures,
 private-store exclusion, run-lock races, partial startup retries, stale recipe claims,
 hostile redirects, and work-tab timeout cleanup. Chrome APIs here are fakes, not browser proof.
+
+The logout timing regressions also cover a page promise that never settles, worker-only
+post-click sleeps, immediate injection, and automatic work-tab closure followed by local
+cleanup and the original tab's configured reload. They reproduce a stuck work-tab failure
+without touching a real account.
 
 ### Portable recovery plan
 
@@ -159,6 +166,10 @@ Work through these in order. Each one exercises a layer that no automated test r
 - [ ] Per-site **Attempt sign-out** on a site with a recipe
 - [ ] Work happens in a background tab inside an existing window; no window is created or closed
 - [ ] A reached route/control says **sign-out attempted**, not **revoked**
+- [ ] With a disposable GitHub account and tab reload enabled, leave the work tab alone.
+      It should close by itself after the sign-out flow or page-action timeout, then the
+      original GitHub tab should refresh. Do not manually close the work tab to make the
+      test pass; record any stall in the activity log
 - [ ] A site where no sign-out control is reached honestly says **cleared locally**
 - [ ] On a throwaway account, inspect the provider's session list and test a second device's
       independent session before/after the action. Record the exact flow and limitations;

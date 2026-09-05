@@ -14,7 +14,7 @@
 import { heuristicRecipe, isValidRecipe } from '../core/recipes.js';
 import { findActiveRecipe } from '../platform/recipe-store.js';
 import { describeRefusal, isTrustedLogoutDestination } from '../core/trust.js';
-import { pageStep } from './step-runner.js';
+import { executePageStep } from './page-execution.js';
 import { closeTab, navigateTab, openTab, sleep } from '../platform/tabs.js';
 import { registrableDomain } from '../core/domain.js';
 
@@ -72,13 +72,13 @@ export async function runRecipe(recipe, windowId, timeoutMs) {
 
   try {
     for (const step of recipe.steps) {
-      if (Date.now() > deadline) {
+      if (Date.now() >= deadline) {
         return { result: attemptedResult(), detail: 'timed out before the sign-out flow completed' };
       }
 
       if (step.op === 'navigate') {
         const url = step.url ?? '';
-        const remaining = Math.max(2000, deadline - Date.now());
+        const remaining = Math.max(1, deadline - Date.now());
         if (tabId === null) tabId = await openTab(windowId, url, remaining);
         else await navigateTab(tabId, url, remaining);
         await checkedOrigin(tabId, domain);
@@ -89,6 +89,16 @@ export async function runRecipe(recipe, windowId, timeoutMs) {
       }
 
       if (tabId === null) return { result: 'none', detail: 'recipe did not open a page' };
+
+      // A click may have just started navigation. Injecting even a simple sleep into
+      // that page can wait on document_idle or a page promise that never settles. Keep
+      // navigation-settling delays here so tab cleanup and user-tab refresh can proceed.
+      if (step.op === 'sleep') {
+        await sleep(Math.min(step.ms, Math.max(0, deadline - Date.now())));
+        if (Date.now() >= deadline) return { result: attemptedResult(), detail: 'timed out while waiting for the sign-out navigation' };
+        lastDetail = 'waited for navigation to settle';
+        continue;
+      }
       const expectedOrigin = await checkedOrigin(tabId, domain);
 
       // Refuse to assert the absence of something never seen present. Failing here is
@@ -100,12 +110,7 @@ export async function runRecipe(recipe, windowId, timeoutMs) {
         };
       }
 
-      const [outcome] = await chrome.scripting.executeScript({
-        target: { tabId },
-        func: pageStep,
-        args: [{ ...step, timeoutMs: Math.max(1, Math.min(step.timeoutMs ?? 8000, deadline - Date.now())),
-          ...(step.op === 'sleep' ? { ms: Math.max(0, Math.min(step.ms, deadline - Date.now())) } : {}) }, expectedOrigin]
-      });
+      const [outcome] = await executePageStep(tabId, step, expectedOrigin, deadline);
       const stepResult = /** @type {{ ok: boolean, detail: string }} */ (outcome?.result ?? {
         ok: false,
         detail: 'no result'
@@ -263,6 +268,7 @@ export async function discoverOidcLogout(domain, budgetMs = 4000) {
  */
 export async function runOidcLogout(endpoint, domain, windowId, timeoutMs) {
   if (!isTrustedLogoutDestination(endpoint, domain)) return { result: 'none', detail: describeRefusal(endpoint, domain) };
+  const deadline = Date.now() + timeoutMs;
   /** @type {number | null} */
   let tabId = null;
   try {
@@ -277,19 +283,13 @@ export async function runOidcLogout(endpoint, domain, windowId, timeoutMs) {
     }
 
     // Many providers land on a confirmation page when no id_token_hint is supplied.
-    await chrome.scripting.executeScript({
-      target: { tabId },
-      func: pageStep,
-      args: [
-        {
-          op: 'clickText',
-          selector: 'button, input[type="submit"], a[role="button"], a',
-          text: 'sign out|log out|logout',
-          optional: true
-        }, new URL(landed.url).origin
-      ]
-    });
-    await sleep(1200);
+    await executePageStep(tabId, {
+      op: 'clickText',
+      selector: 'button, input[type="submit"], a[role="button"], a',
+      text: 'sign out|log out|logout',
+      optional: true
+    }, new URL(landed.url).origin, deadline);
+    await sleep(Math.min(1200, Math.max(0, deadline - Date.now())));
     return {
       result: 'attempted',
       detail: 'OpenID Connect sign-out was attempted; server-side invalidation was not independently verified'

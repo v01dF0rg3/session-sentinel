@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.36.1 — 5 September 2026
+
+### A navigating work tab must not hold up local cleanup
+
+An installed GitHub test reached a signed-out page in the temporary tab, but the original
+tab stayed on its dashboard until the temporary tab was manually closed. The recipe injected
+its post-click delay into a page navigating away, and the caller had no independent deadline
+while waiting for that page promise. That stall is reproduced by the new API-fake regressions;
+the exact browser-level trigger still needs a live retest after reload.
+
+Recipe delays now run in the worker. Page actions request immediate injection and have a
+worker-side timeout, so an unresponsive page can return to temporary-tab cleanup and then
+the normal local-wipe/reload sequence. Queued page actions carry an absolute expiry and
+check it before clicking; a timed-out promise cannot authorize a late click. OIDC actions
+and the diagnostics injection use the same guarded path. User tabs are still never closed.
+
+- 239 Node tests pass, including six new timing and end-to-end orchestration regressions.
+- 25 page assertions pass in real Chrome, including three new expiry checks.
+- No real account was logged out by automated testing of this patch. Runtime results remain
+  unverified sign-out attempts; this timing fix does not prove copied-token invalidation.
+
 ## 0.36.0 — 5 September 2026
 
 ### Tighter cleanup boundaries and evidence you can inspect

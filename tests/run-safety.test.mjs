@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { withDefaults } from '../src/core/policy.js';
 import { localEvidenceText, outcomeColor, retryDomains, summarize } from '../src/engine/report.js';
 
-function fakeChrome({ reissue = false, alarmFails = false } = {}) {
+function fakeChrome({ reissue = false, alarmFails = false, domain = 'example.com' } = {}) {
   const local = { settings: withDefaults({ onboarded: true, serverLogout: { enabled: false } }) };
   const session = {};
-  let cookies = [{ domain: 'example.com', name: 'sessionid', storeId: '0' }];
+  let cookies = [{ domain, name: 'sessionid', storeId: '0' }];
   let onRemove = null;
   const storage = (data) => ({
     get: async (key) => structuredClone({ [key]: data[key] }),
@@ -18,7 +18,7 @@ function fakeChrome({ reissue = false, alarmFails = false } = {}) {
     storage: { local: storage(local), session: storage(session) },
     alarms: { create: async () => { if (alarmFails) throw new Error('no alarms'); }, clear: async () => { if (alarmFails) throw new Error('no alarms'); } },
     cookies: { getAll: async () => cookies, remove: async () => { cookies = []; return { name: 'sessionid' }; } },
-    tabs: { query: async () => [{ id: 1, url: 'https://example.com/' }], reload: async () => { if (reissue) cookies = [{ domain: 'example.com', name: 'opaque' }]; } },
+    tabs: { query: async () => [{ id: 1, url: `https://${domain}/` }], reload: async () => { if (reissue) cookies = [{ domain, name: 'opaque' }]; } },
     browsingData: { remove: async () => { if (onRemove) await onRemove(); } }
   };
   return { local, hold: (handler) => { onRemove = handler; } };
@@ -108,4 +108,47 @@ test('a recipe-store failure cannot abort the requested local cleanup', async ()
   assert.equal(report.sites[0].outcome, 'cleared');
   assert.equal(report.sites[0].serverAction, 'notAttempted');
   assert.match(report.sites[0].detail, /sign-out was unavailable/);
+});
+
+test('GitHub closes its work tab then cleans locally and refreshes the original tab automatically', async () => {
+  const state = fakeChrome({ domain: 'github.com' });
+  state.local.settings.serverLogout.enabled = true;
+  state.local.settings.serverLogout.timeoutMs = 5000;
+  const events = [];
+  chrome.windows = { getAll: async () => [{ id: 1 }, { id: 2 }] };
+  chrome.tabs.create = async () => ({ id: 900 });
+  chrome.tabs.get = async () => ({ id: 900, status: 'complete', url: 'https://github.com/' });
+  chrome.tabs.remove = async (id) => { events.push(`close:${id}`); };
+  chrome.tabs.reload = async (id) => { events.push(`reload:${id}`); };
+  chrome.scripting = { executeScript: async ({ args }) => {
+    events.push(args[0].op);
+    return [{ result: { ok: true, detail: 'activated' } }];
+  } };
+  state.hold(async () => { events.push('wipe'); });
+  const engine = await load();
+  const report = await engine.runLogout('manualSite', ['github.com']);
+  assert.deepEqual(events, ['waitFor', 'clickText', 'close:900', 'wipe', 'reload:1']);
+  assert.equal(report.sites[0].outcome, 'logoutAttempted');
+  assert.equal(report.sites[0].verified, true);
+  assert.equal(await engine.isRunInProgress(), false);
+});
+
+test('a hung GitHub page action still releases the work tab and reaches local cleanup', { timeout: 3000 }, async () => {
+  const state = fakeChrome({ domain: 'github.com' });
+  state.local.settings.serverLogout.enabled = true;
+  state.local.settings.serverLogout.timeoutMs = 700;
+  const events = [];
+  chrome.windows = { getAll: async () => [{ id: 1 }, { id: 2 }] };
+  chrome.tabs.create = async () => ({ id: 900 });
+  chrome.tabs.get = async () => ({ id: 900, status: 'complete', url: 'https://github.com/' });
+  chrome.tabs.remove = async (id) => { events.push(`close:${id}`); };
+  chrome.tabs.reload = async (id) => { events.push(`reload:${id}`); };
+  chrome.scripting = { executeScript: () => new Promise(() => {}) };
+  state.hold(async () => { events.push('wipe'); });
+  const engine = await load();
+  const report = await engine.runLogout('manualSite', ['github.com']);
+  assert.deepEqual(events, ['close:900', 'wipe', 'reload:1']);
+  assert.match(report.sites[0].detail, /timed out/);
+  assert.equal(report.sites[0].verified, true);
+  assert.equal(await engine.isRunInProgress(), false);
 });

@@ -19,7 +19,7 @@ import { discoverSessions, likelyLoggedIn, wipeSite } from '../platform/sessions
 import { COOKIE_TEST_DOMAIN, testCookieCleanup } from '../platform/cookie-selftest.js';
 import { getActiveRecipes } from '../platform/recipe-store.js';
 import { DEPTH_DATA_TYPES } from '../core/policy.js';
-import { pageStep } from '../engine/step-runner.js';
+import { executePageStep } from '../engine/page-execution.js';
 import { hostnameFromUrl, registrableDomain } from '../core/domain.js';
 import { formatLog } from '../platform/eventlog.js';
 import { METHOD_LABELS, describeCoverage } from '../core/coverage.js';
@@ -233,11 +233,8 @@ async function run() {
         await sleep(250);
       }
 
-      const [outcome] = await chrome.scripting.executeScript({
-        target: { tabId },
-        func: pageStep,
-        args: [{ op: 'waitFor', selector: 'body', timeoutMs: 5000 }, 'https://example.com']
-      });
+      const [outcome] = await executePageStep(tabId,
+        { op: 'waitFor', selector: 'body', timeoutMs: 5000 }, 'https://example.com', Date.now() + 5000);
 
       return outcome?.result?.ok
         ? { detail: 'ran in a real page — website sign-out attempts work this way' }

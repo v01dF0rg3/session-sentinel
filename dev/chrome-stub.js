@@ -233,7 +233,7 @@
     scripting: { executeScript: () => delay([{ result: { ok: true, detail: 'found' } }], 20) },
     notifications: { create: () => delay('n1', 10), clear: () => delay(true, 5) },
     runtime: {
-      getManifest: () => ({ version: '0.36.0', permissions: ['storage','alarms','idle','cookies','browsingData','scripting','tabs','notifications'] }),
+      getManifest: () => ({ version: '0.36.1', permissions: ['storage','alarms','idle','cookies','browsingData','scripting','tabs','notifications'] }),
       async sendMessage(message) {
         if (previewQuery.get('recovery') === 'save-error' && ['markRecoveryStep', 'setRecoveryScope', 'resetRecovery'].includes(message?.type)) {
           return delay({ error: 'Recovery fixture: storage unavailable' }, 20);

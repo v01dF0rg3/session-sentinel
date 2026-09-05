@@ -10,6 +10,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { executePageStep } from '../src/engine/page-execution.js';
 
 /**
  * @param {(step: any) => boolean} matches Whether a given step succeeds on this fake page.
@@ -47,6 +48,68 @@ const base = (steps, extra = {}) => ({
   capability: 'global',
   steps: [{ op: 'navigate', url: 'https://example.com/settings/sessions' }, ...steps],
   ...extra
+});
+
+test('post-click sleep stays in the worker instead of injecting into the navigating page', async () => {
+  const { executed } = fakePage(() => true);
+  const removed = [];
+  chrome.tabs.remove = async (id) => { removed.push(id); };
+  const { runRecipe } = await load();
+  const result = await runRecipe(base([
+    { op: 'clickText', selector: 'button', text: 'sign out' },
+    { op: 'sleep', ms: 20 }
+  ], { capability: 'local' }), 1, 3000);
+  assert.equal(result.result, 'attempted');
+  assert.deepEqual(executed, ['clickText'], 'navigation settling must not wait on a page promise');
+  assert.deepEqual(removed, [5], 'the owned tab closes without the user touching it');
+});
+
+test('a page injection that never settles cannot hold the work tab open indefinitely', async () => {
+  fakePage(() => true);
+  const removed = [];
+  chrome.tabs.remove = async (id) => { removed.push(id); };
+  let release;
+  chrome.scripting.executeScript = () => new Promise((resolve) => { release = resolve; });
+  const { runRecipe } = await load();
+  const running = runRecipe(base([
+    { op: 'clickText', selector: 'button', text: 'sign out' }
+  ], { capability: 'local' }), 1, 700);
+  let escape;
+  try {
+    const result = await Promise.race([running, new Promise((resolve) => { escape = setTimeout(() => resolve(null), 1600); })]);
+    assert.ok(result, 'the worker deadline must finish without manual tab closure');
+    assert.equal(result.result, 'none', 'a missing click result is not an observed action');
+    assert.match(result.detail, /timed out/i);
+    assert.deepEqual(removed, [5]);
+  } finally {
+    clearTimeout(escape);
+    release?.([{ result: { ok: true, detail: 'late page response' } }]);
+    await running;
+  }
+});
+
+test('page execution requests immediate injection with an absolute deadline inside the site budget', async () => {
+  fakePage(() => true);
+  const deadline = Date.now() + 3000;
+  chrome.scripting.executeScript = async (input) => {
+    assert.equal(input.injectImmediately, true);
+    assert.deepEqual(input.target, { tabId: 5 });
+    assert.equal(input.args[1], 'https://example.com');
+    assert.ok(input.args[2] > Date.now() && input.args[2] <= deadline);
+    assert.ok(input.args[0].timeoutMs <= 1000);
+    return [{ result: { ok: true, detail: 'found' } }];
+  };
+  const result = await executePageStep(5, { op: 'waitFor', selector: 'body', timeoutMs: 1000 }, 'https://example.com', deadline);
+  assert.equal(result[0].result.ok, true);
+});
+
+test('missing or expired deadlines and worker-only sleeps never dispatch a page action', async () => {
+  fakePage(() => true);
+  chrome.scripting.executeScript = async () => { assert.fail('expired or worker-only work must not be dispatched'); };
+  for (const deadline of [undefined, NaN, Date.now() - 1]) {
+    await assert.rejects(executePageStep(5, { op: 'click', selector: 'button' }, 'https://example.com', deadline), /timed out/);
+  }
+  await assert.rejects(executePageStep(5, { op: 'sleep', ms: 10 }, 'https://example.com', Date.now() + 1000), /worker/);
 });
 
 test('asserting the absence of something never seen is refused', async () => {
