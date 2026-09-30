@@ -57,3 +57,19 @@ test('a kept sibling is reported, because it will undo the logout', () => {
   assert.deepEqual(keptSiblings('youtube.com', () => false), []);
   assert.deepEqual(keptSiblings('chase.com', () => true), []);
 });
+
+test('a game sign-in host is cleared with the game it signs in', () => {
+  // Signing out of League of Legends while auth.riotgames.com keeps its session would be
+  // the YouTube-without-Google bug again: the next visit silently signs the user back in.
+  const { domains, added } = expandForIdentity(
+    ['leagueoflegends.com'],
+    ['leagueoflegends.com', 'riotgames.com', 'playvalorant.com', 'steamcommunity.com']
+  );
+  assert.ok(domains.includes('riotgames.com'));
+  assert.ok(domains.includes('playvalorant.com'));
+  assert.ok(!domains.includes('steamcommunity.com'), 'a different account is not touched');
+  assert.ok(added.every((a) => a.because === 'leagueoflegends.com'));
+
+  assert.deepEqual(siblingsOf('steamcommunity.com'), ['steampowered.com']);
+  assert.deepEqual(siblingsOf('blizzard.com'), ['battle.net']);
+});

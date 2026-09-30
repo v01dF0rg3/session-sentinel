@@ -70,10 +70,22 @@ export const DOMAIN_RISK = {
   'lyft.com': 'high', 'airbnb.com': 'high', 'booking.com': 'high',
   'expedia.com': 'medium', 'aliexpress.com': 'medium',
 
+  // --- Gaming: purchases, in-game items and stored cards ---------------------
+  // Filed under "low blast radius" until 0.37.1, beside Wikipedia and imgur. That was the
+  // wrong model: these accounts hold money-equivalent inventories and saved payment methods,
+  // and they are routinely taken by session-stealing malware because their contents can be
+  // spent or resold. This project exists because Discord and Riot sessions were stolen that
+  // way — and Riot was rated low, cookie-only, skipped by every automatic trigger, and absent
+  // from the default recovery plan.
+  'steampowered.com': 'high', 'steamcommunity.com': 'high', 'epicgames.com': 'high',
+  'riotgames.com': 'high', 'leagueoflegends.com': 'high', 'playvalorant.com': 'high',
+  'battle.net': 'high', 'blizzard.com': 'high', 'ea.com': 'high', 'ubisoft.com': 'high',
+  'roblox.com': 'high', 'xbox.com': 'high', 'playstation.com': 'high',
+  'minecraft.net': 'high',
+
   // --- Low blast radius ------------------------------------------------------
   'netflix.com': 'medium', 'spotify.com': 'low', 'youtube.com': 'low',
   'twitch.tv': 'low', 'hulu.com': 'medium', 'disneyplus.com': 'medium',
-  'steampowered.com': 'high', 'epicgames.com': 'high', 'roblox.com': 'medium',
   'wikipedia.org': 'low', 'stackoverflow.com': 'low', 'medium.com': 'low',
   'nytimes.com': 'low', 'imgur.com': 'low', 'archive.org': 'low'
 };

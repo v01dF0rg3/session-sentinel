@@ -13,7 +13,7 @@
  * is handled slightly out of order, not handled wrongly.
  */
 
-/** @typedef {'identity' | 'finance' | 'infrastructure' | 'communication' | 'other'} RecoveryCategory */
+/** @typedef {'identity' | 'finance' | 'infrastructure' | 'communication' | 'gaming' | 'other'} RecoveryCategory */
 
 /**
  * The order the categories are worked through. Lower is sooner.
@@ -24,7 +24,8 @@ export const CATEGORY_ORDER = {
   finance: 1,
   infrastructure: 2,
   communication: 3,
-  other: 4
+  gaming: 4,
+  other: 5
 };
 
 /** @type {Record<RecoveryCategory, string>} */
@@ -33,6 +34,7 @@ export const CATEGORY_LABELS = {
   finance: 'Money',
   infrastructure: 'Infrastructure and code',
   communication: 'Communication and social',
+  gaming: 'Gaming',
   other: 'Everything else'
 };
 
@@ -45,6 +47,8 @@ export const CATEGORY_WHY = {
     'Lasting damage. Code, deployments, domains and cloud accounts can be altered in ways that outlive the breach.',
   communication:
     'Impersonation, and a reset vector of their own for anything tied to these accounts.',
+  gaming:
+    'Purchases, in-game items and stored cards can be spent or resold, which is why session-stealing malware targets these accounts. Check for trades, purchases and changes to the account email.',
   other: 'Lower stakes, but still worth changing once the rest is done.'
 };
 
@@ -87,7 +91,15 @@ export const DOMAIN_CATEGORY = {
   'twitter.com': 'communication', 'linkedin.com': 'communication', 'discord.com': 'communication',
   'slack.com': 'communication', 'telegram.org': 'communication', 'whatsapp.com': 'communication',
   'snapchat.com': 'communication', 'tiktok.com': 'communication', 'reddit.com': 'communication',
-  'messenger.com': 'communication', 'zoom.us': 'communication'
+  'messenger.com': 'communication', 'zoom.us': 'communication',
+
+  // Gaming. Listed explicitly because the keyword fallback files steamcommunity.com under
+  // communication ("community") and everything else under other.
+  'steampowered.com': 'gaming', 'steamcommunity.com': 'gaming', 'epicgames.com': 'gaming',
+  'riotgames.com': 'gaming', 'leagueoflegends.com': 'gaming', 'playvalorant.com': 'gaming',
+  'battle.net': 'gaming', 'blizzard.com': 'gaming', 'ea.com': 'gaming',
+  'ubisoft.com': 'gaming', 'roblox.com': 'gaming', 'xbox.com': 'gaming',
+  'playstation.com': 'gaming', 'minecraft.net': 'gaming'
 };
 
 /**

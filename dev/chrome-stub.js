@@ -269,7 +269,7 @@
     scripting: { executeScript: () => delay([{ result: { ok: true, detail: 'found' } }], 20) },
     notifications: { create: () => delay('n1', 10), clear: () => delay(true, 5) },
     runtime: {
-      getManifest: () => ({ version: '0.37.0', permissions: ['storage','alarms','idle','cookies','browsingData','scripting','tabs','notifications'] }),
+      getManifest: () => ({ version: '0.37.1', permissions: ['storage','alarms','idle','cookies','browsingData','scripting','tabs','notifications'] }),
       async sendMessage(message) {
         if (previewQuery.get('recovery') === 'save-error' && ['markRecoveryStep', 'setRecoveryScope', 'resetRecovery'].includes(message?.type)) {
           return delay({ error: 'Recovery fixture: storage unavailable' }, 20);
@@ -305,6 +305,7 @@
               { domain: 'azure.com', tier: 'critical', category: 'infrastructure', siteUrl: 'https://azure.com', sharesSignInWith: [] },
               { domain: 'discord.com', tier: 'critical', category: 'communication', siteUrl: 'https://discord.com', sessionsUrl: 'https://discord.com/channels/@me', sessionsLabel: 'Settings, Devices', sharesSignInWith: [] },
               { domain: 'linkedin.com', tier: 'high', category: 'communication', passwordUrl: 'https://www.linkedin.com/psettings/change-password', siteUrl: 'https://linkedin.com', sharesSignInWith: [] },
+              { domain: 'riotgames.com', tier: 'high', category: 'gaming', siteUrl: 'https://riotgames.com', sharesSignInWith: ['leagueoflegends.com'] },
               { domain: 'chess.com', tier: 'low', category: 'other', siteUrl: 'https://chess.com', sharesSignInWith: [] },
               { domain: 'bloomberg.com', tier: 'low', category: 'other', siteUrl: 'https://bloomberg.com', sharesSignInWith: [], unverified: true }
             ].map((step) => ({ ...step, unverified: step.unverified === true }));
@@ -315,15 +316,10 @@
                 siteUrl: `https://recovery-fixture-${i + 1}.com`, sharesSignInWith: [], unverified: false
               })));
             }
-            const labels = { identity: 'Email and identity', finance: 'Money', infrastructure: 'Infrastructure and code', communication: 'Communication and social', other: 'Everything else' };
-            const whys = {
-              identity: 'Review these first. Email and identity accounts can reset or unlock many other accounts, so leaving them compromised can undo later recovery work.',
-              finance: 'Direct loss. Stored cards, transfers, and anything that can move money.',
-              infrastructure: 'Lasting damage. Code, deployments, domains and cloud accounts can be altered in ways that outlive the breach.',
-              communication: 'Impersonation, and a reset vector of their own for anything tied to these accounts.',
-              other: 'Lower stakes, but still worth reviewing once the rest is done.'
-            };
-            const fullGroups = ['identity','finance','infrastructure','communication','other'].map((c) => ({
+            // Read from the real data rather than restated here. A fixture that hand-copies
+            // category labels drifts the same way the old hand-copied previews did.
+            const { CATEGORY_LABELS: labels, CATEGORY_ORDER, CATEGORY_WHY: whys } = await import('../data/recovery-categories.js');
+            const fullGroups = Object.keys(CATEGORY_ORDER).sort((a, b) => CATEGORY_ORDER[a] - CATEGORY_ORDER[b]).map((c) => ({
               category: c, label: labels[c], why: whys[c], steps: all.filter((s) => s.category === c)
             }));
             const minTier = message.minTier ?? recovery.minTier;

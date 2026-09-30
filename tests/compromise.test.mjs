@@ -185,3 +185,34 @@ test('sensitivity still outranks confirmation', () => {
     ['github.com', 'gitlab.com']
   );
 });
+
+test('gaming accounts are their own recovery category, worked after communication', () => {
+  // Until 0.37.1 every game account fell into "everything else", including steamcommunity.com
+  // (filed under communication by the "community" keyword). They hold spendable inventories
+  // and saved cards, which is why session-stealing malware goes after them.
+  for (const domain of ['riotgames.com', 'roblox.com', 'battle.net', 'steamcommunity.com']) {
+    assert.equal(recoveryCategory(domain), 'gaming', domain);
+  }
+
+  const groups = plan(['somewhere.example', 'riotgames.com', 'discord.com', 'google.com'], 'low');
+  assert.deepEqual(
+    groups.map((g) => g.category),
+    ['identity', 'communication', 'gaming', 'other'],
+    'after the reset vectors and impersonation risks, before everything else'
+  );
+});
+
+test('a stolen game account appears in the default recovery plan', () => {
+  // The case this project was built for. Riot was one of the accounts taken with a stolen
+  // session, and at the default threshold it was missing from "Been hacked?" entirely.
+  const domains = plan(['riotgames.com', 'roblox.com', 'battle.net']).flatMap((g) =>
+    g.steps.map((s) => s.domain)
+  );
+  assert.deepEqual(domains.sort(), ['battle.net', 'riotgames.com', 'roblox.com']);
+});
+
+test('streaming stays out of the gaming bucket', () => {
+  // The line is spendable inventory and stored payment, not "entertainment". Twitch is a
+  // separate identity with a different risk, and moving it would dilute the category.
+  assert.notEqual(recoveryCategory('twitch.tv'), 'gaming');
+});

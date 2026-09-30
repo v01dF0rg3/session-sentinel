@@ -31,5 +31,15 @@ export const IDENTITY_GROUPS = [
   ['yahoo.com', 'aol.com'],
 
   // Atlassian cloud.
-  ['atlassian.com', 'atlassian.net']
+  ['atlassian.com', 'atlassian.net'],
+
+  // Gaming. Each is one account whose sign-in host serves the other properties; the
+  // grouping follows that host rather than a shared owner. Not yet confirmed by an
+  // installed-browser clear-and-revisit test, which is how the Google group was found.
+  // Steam: login.steampowered.com signs in both the store and the community site.
+  ['steampowered.com', 'steamcommunity.com'],
+  // Riot: auth.riotgames.com is the sign-in for League of Legends and Valorant.
+  ['riotgames.com', 'leagueoflegends.com', 'playvalorant.com'],
+  // Blizzard: account.battle.net is the sign-in for the Blizzard shop.
+  ['battle.net', 'blizzard.com']
 ];

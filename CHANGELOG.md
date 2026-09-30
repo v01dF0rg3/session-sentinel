@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.37.1 — 30 September 2026
+
+### Game accounts are no longer rated low-risk
+
+This project began when malware stole Discord and Riot Games sessions. Discord was rated
+`high`. Riot was rated `low` — so it got cookie-only cleanup that leaves `localStorage`
+behind, was skipped by every automatic trigger, sorted last in manual runs, and was missing
+from the default **Been hacked?** plan entirely.
+
+It was not alone. Gaming sat in a section of `data/risk-domains.js` headed *low blast
+radius*, beside Wikipedia and imgur. Of thirteen major platforms checked, twelve were `low`
+and Roblox was `medium`; every one was excluded from default recovery. Steam's store and Epic
+were individually bumped to `high` inside that same section, while `steamcommunity.com` —
+the same Steam account — stayed `low`.
+
+That model was wrong. These accounts hold purchased items, tradable inventories and saved
+payment methods, and they are routine targets for session-stealing malware because their
+contents can be spent or resold.
+
+- **Rated `high`:** Steam (store and community), Epic, Riot (with League of Legends and
+  Valorant), Battle.net and Blizzard, EA, Ubisoft, Roblox, Xbox, PlayStation, Minecraft.
+  High-tier cleanup includes `localStorage` and service workers, not just cookies.
+- **New Gaming recovery category**, worked after communication and before everything else,
+  with its own explanation. `steamcommunity.com` no longer lands under communication through
+  the `community` keyword.
+- **Shared sign-ins grouped:** Steam's two domains, Riot's three, and Battle.net with the
+  Blizzard shop. Signing out of League of Legends now also clears the Riot sign-in host, so
+  the next visit does not silently sign back in — the YouTube-without-Google trap again.
+
+**Visible behaviour change.** With automatic protection on, closing Chrome or locking the
+screen now clears local session data for these sites, as it already did for Discord. Expect
+to sign back into them afterwards. Tick **Keep** on any you would rather leave alone.
+
+Twitch deliberately stays `low`: it is streaming, not an inventory account, and a separate
+identity from Amazon.
+
+**Needs installed-browser testing:** the three new identity groups follow each provider's
+sign-in host but have not been confirmed by a clear-and-revisit test, which is how the
+Google group was found. Minecraft is rated and categorised but not grouped with Microsoft,
+because that grouping would sign people out of their email and is the least certain.
+
+- 265 tests (up from 261).
+
 ## 0.37.0 — 5 September 2026
 
 ### A quieter Home, with detail one tab away
